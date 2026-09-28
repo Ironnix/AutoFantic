@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>AutoFanatic.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Talks to the Super I/O chip, CPU and GPU directly (via the PawnIO driver / NVAPI / ADLX). -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AutoFanatic.Core.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,13 @@
+bin/
+obj/
+publish/
+.vs/
+.vscode/
+*.user
+*.suo
+# measurement logs and hardware dumps stay local unless added on purpose
+*.csv
+logs/
+
+# machine-specific dumps (describe your PC; keep them out of a public repo)
+hardware*.txt

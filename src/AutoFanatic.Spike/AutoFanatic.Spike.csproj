@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AutoFanatic.Spike</RootNamespace>
+    <AssemblyName>autofanatic-spike</AssemblyName>
+    <!-- publish as one self-contained exe, so the target PC needs no .NET install -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutoFanatic.Core\AutoFanatic.Core.csproj" />
+  </ItemGroup>
+
+</Project>
