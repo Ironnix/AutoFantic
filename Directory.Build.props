@@ -5,5 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Product>AutoFantic</Product>
+    <Copyright>Copyright (c) 2026 Ironnix · MIT License</Copyright>
   </PropertyGroup>
 </Project>

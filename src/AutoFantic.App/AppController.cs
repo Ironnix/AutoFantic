@@ -132,8 +132,12 @@ internal sealed class AppController : IDisposable
 
     public bool IsCustom(int group) => Overrides.For(Recommended.Groups[group]) is not null;
 
-    /// <summary>The fans-off test found stopping this group safe at idle (only then may the user allow it).</summary>
-    public bool CanStop(int group) => Recommended.Groups[group].OffAt.Count > 0;
+    /// <summary>The group's fans measurably stood still at 0 % (fans.json): only then can they be switched off.</summary>
+    public bool CanStop(int group) =>
+        Inventory.Groups().FirstOrDefault(k => k.Headers.Select(h => h.ControlId).SequenceEqual(Recommended.Groups[group].ControlIds))?.CanStop == true;
+
+    /// <summary>The calibration itself switches this group off at idle (the fans-off test found that safe).</summary>
+    public bool RecommendsStop(int group) => Recommended.Groups[group].OffAt.Count > 0;
 
     public bool AllowsStop(int group) => Effective.Groups[group].OffAt.Count > 0;
 

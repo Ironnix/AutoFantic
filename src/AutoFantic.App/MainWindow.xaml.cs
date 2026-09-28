@@ -67,7 +67,9 @@ public partial class MainWindow : Window
             UpdateLive();
         };
 
-        Editor.CurveEdited += curve => _app.SetCurve(_selected, curve, AllowStop.IsChecked == true);
+        // drawing a point down to 0 % means "off here": that switches stopping on where the fan can stop
+        Editor.CurveEdited += curve => _app.SetCurve(_selected, curve,
+            AllowStop.IsChecked == true || (curve.Count > 0 && curve[0].Percent <= 0 && _app.CanStop(_selected)));
         AllowStop.Click += (_, _) => _app.SetCurve(_selected, _app.Effective.Groups[_selected].Curve, AllowStop.IsChecked == true);
         ResetCurve.Click += (_, _) => _app.ResetCurve(_selected);
 
@@ -191,7 +193,7 @@ public partial class MainWindow : Window
                 LoopState.Paused => (Paused, _app.Sleeping ? "Paused for sleep" : "Paused", "The BIOS controls the fans. Resume to hand them back to AutoFantic."),
                 LoopState.CoolingDown => (Cooling, "Cooling down", "A temperature limit was reached: all fans run at 100 % until it's safely cool again."),
                 LoopState.SensorProblem => (Problem, "Sensor problem", "A temperature sensor stopped reporting: the BIOS controls the fans for now; AutoFantic tries again every minute."),
-                _ => (Running, "AutoFantic controls your fans", "They follow your curves and are off at idle where that was found safe. The safety limits always stay on."),
+                _ => (Running, "AutoFantic controls your fans", "They follow your curves and switch off when the PC is idle and cool, where allowed. The safety limits always stay on."),
             };
         StateDot.Fill = brush;
         LogoDot.Fill = brush;
@@ -213,11 +215,23 @@ public partial class MainWindow : Window
             _fanRows[i].Value.Text = _app.Calibrating ? "test" : percent switch { null => "BIOS", 0 => "off", { } p => $"{p:0} %" };
         }
 
+        // the ring sits at the smoothed temperature the fan control reads the curve at
         var group = _app.Effective.Groups[Math.Min(_selected, _app.Effective.Groups.Count - 1)];
-        double? followed = group.Follows == Component.Cpu ? status.CpuTemp : status.GpuTemp;
-        Editor.Live = followed is { } t && _selected < status.Fans.Count ? (t, status.Fans[_selected].Percent) : null;
+        var fan = _selected < status.Fans.Count ? status.Fans[_selected] : null;
+        double? followed = fan?.Status?.Temperature ?? (group.Follows == Component.Cpu ? status.CpuTemp : status.GpuTemp);
+        Editor.Live = followed is { } t && fan is not null && !_app.Calibrating ? (t, fan.Percent, Note(fan.Status)) : null;
         Editor.Refresh();
     }
+
+    private static string? Note(FanStatus? status) => status switch
+    {
+        { Note: FanNote.SlowingDown, CurvePercent: { } c } => $"slowing down gently to {Math.Max(0, c):0} %",
+        { Note: FanNote.SpeedingUp, CurvePercent: { } c } => $"speeding up to {c:0} %",
+        { Note: FanNote.Slowest } => "the slowest speed this fan turns at",
+        { Note: FanNote.Off } => "idle and cool",
+        { Note: FanNote.Starting } => "starting up (short push)",
+        _ => null,
+    };
 
     private void UpdatePresets()
     {
@@ -286,9 +300,19 @@ public partial class MainWindow : Window
         LegendUse.Fill = new SolidColorBrush(color);
         LegendRecommended.Stroke = new SolidColorBrush(Color.FromArgb(0x90, color.R, color.G, color.B));
 
-        AllowStop.IsEnabled = _app.CanStop(_selected);
-        AllowStop.IsChecked = _app.AllowsStop(_selected);
-        AllowStop.ToolTip = _app.CanStop(_selected) ? null : "The fans-off test didn't find it safe to stop this fan at idle.";
+        bool canStop = _app.CanStop(_selected), allows = _app.AllowsStop(_selected);
+        double offAt = CurveController.OffTemperature(effective);
+        string part = effective.Follows == Component.Cpu ? "CPU" : "GPU";
+        AllowStop.IsEnabled = canStop;
+        AllowStop.IsChecked = allows;
+        StopHint.Text = !canStop
+            ? "These fans kept turning at 0 % when AutoFantic measured them, so they can't be switched off."
+            : allows
+            ? $"Off while the PC is idle and the {part} is at most {offAt:0} °C; on again above {offAt + CurveController.Hysteresis:0} °C or when load comes. Drag the first points down to 0 % to choose the temperature."
+              + (_app.RecommendsStop(_selected) ? "" : " The calibration keeps these fans turning at idle: switching them off is your choice.")
+            : "Can be switched off when the PC is idle and cool (dragging a point to 0 % does it too)."
+              + (_app.RecommendsStop(_selected) ? " The calibration recommends it." : "");
+        Editor.OffBelow = allows ? offAt : null;
         ResetCurve.IsEnabled = custom;
     }
 

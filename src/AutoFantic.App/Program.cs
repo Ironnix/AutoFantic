@@ -50,7 +50,8 @@ internal static class Program
             return 0;
         }
 
-        using var single = new Mutex(initiallyOwned: true, DataFolder.BackgroundMutex, out bool first);
+        // a simulated copy touches no hardware: it may run next to the real one
+        using var single = new Mutex(initiallyOwned: true, simulate ? DataFolder.BackgroundMutex + ".Simulated" : DataFolder.BackgroundMutex, out bool first);
         if (!first)
         {
             if (!quiet)

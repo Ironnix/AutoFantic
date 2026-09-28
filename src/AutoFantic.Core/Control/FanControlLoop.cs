@@ -20,7 +20,8 @@ public enum LoopState
 }
 
 /// <param name="Percent">Speed AutoFantic set; 0 = off; null = the BIOS is in control.</param>
-public sealed record FanReading(string Name, double? Percent);
+/// <param name="Status">While running by the curves: the temperature followed, the curve's speed there and why the fan differs from it.</param>
+public sealed record FanReading(string Name, double? Percent, FanStatus? Status = null);
 
 public sealed record LoopStatus(
     DateTimeOffset Time,
@@ -173,6 +174,7 @@ public sealed class FanControlLoop : IDisposable
             double? cpu = s.Value(_keys.CpuTemp), gpu = s.Value(_keys.GpuTemp);
             double cpuW = s.Value(_keys.CpuPower) ?? 0, gpuW = s.Value(_keys.GpuPower) ?? 0;
             double?[] speeds = new double?[_channels.Count]; // null = BIOS
+            IReadOnlyList<FanStatus>? status = null;
 
             if (_paused)
             {
@@ -224,10 +226,11 @@ public sealed class FanControlLoop : IDisposable
                     if (gpu is { } g)
                         temps[Component.GpuCore] = g;
                     Apply(_controller.Step(s.Time, temps, cpuW, gpuW), speeds);
+                    status = _controller.Status;
                 }
             }
 
-            var fans = _calibration.Groups.Select((g, i) => new FanReading(g.Name, speeds[i])).ToList();
+            var fans = _calibration.Groups.Select((g, i) => new FanReading(g.Name, speeds[i], status?[i])).ToList();
             Last = new LoopStatus(s.Time, State, cpu, gpu, cpuW, gpuW, fans);
             return Last;
         }

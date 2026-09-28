@@ -33,11 +33,12 @@ public class CurveOverridesTests
     }
 
     [Fact]
-    public void Stopping_can_never_be_switched_on_where_the_calibration_found_it_unsafe()
+    public void The_user_may_let_a_fan_stop_that_the_calibration_keeps_turning()
     {
         var overrides = CurveOverrides.None.With(Calibration.Groups[1], new CurveOverride(Calibration.Groups[1].Curve, AllowOff: true));
 
-        Assert.Empty(overrides.ApplyTo(Calibration).Groups[1].OffAt);
+        Assert.Equal(["idle"], overrides.ApplyTo(Calibration).Groups[1].OffAt);
+        Assert.Empty(Calibration.Groups[1].OffAt); // the recommendation itself is unchanged
     }
 
     [Fact]

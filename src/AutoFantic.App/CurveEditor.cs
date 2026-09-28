@@ -43,8 +43,14 @@ internal sealed class CurveEditor : FrameworkElement
 
     public string TemperatureLabel { get; set; } = "CPU temperature";
 
-    /// <summary>Where the fan is right now: the temperature it follows and its speed (0 = off; null = the BIOS has it).</summary>
-    public (double Temperature, double? Percent)? Live { get; set; }
+    /// <summary>
+    /// Where the fan is right now: the (smoothed) temperature it follows, its speed (0 = off; null =
+    /// the BIOS has it), and why it isn't exactly on the curve, if it isn't.
+    /// </summary>
+    public (double Temperature, double? Percent, string? Note)? Live { get; set; }
+
+    /// <summary>The fan may switch off at or below this temperature (at idle); null = it keeps turning.</summary>
+    public double? OffBelow { get; set; }
 
     public void SetCurves(IReadOnlyList<CurvePoint> curve, IReadOnlyList<CurvePoint> recommended)
     {
@@ -119,6 +125,17 @@ internal sealed class CurveEditor : FrameworkElement
             dc.DrawGeometry(null, new Pen(color, 2.5) { LineJoin = PenLineJoin.Round }, Line(_curve));
         }
 
+        // where the fan may be off: a band along the bottom up to the switch-off temperature
+        if (OffBelow is { } off && off > MinT)
+        {
+            var band = new Rect(new Point(plot.Left, Y(0) - 6), new Point(X(off), Y(0)));
+            var tint = new SolidColorBrush(Color.FromArgb(0x55, Color.R, Color.G, Color.B));
+            dc.DrawRectangle(tint, null, band);
+            // explained below the axis, like a legend, where it can't collide with the live label
+            dc.DrawRectangle(tint, null, new Rect(plot.Left, plot.Bottom + 25, 14, 6));
+            Label(dc, $"off at idle up to {off:0} °C", new Point(plot.Left + 20, plot.Bottom + 28), text, HorizontalAlignment.Left, size: 11);
+        }
+
         // where the fan is now
         if (Live is { } live)
         {
@@ -128,7 +145,15 @@ internal sealed class CurveEditor : FrameworkElement
             dc.DrawEllipse(null, new Pen(strong, 2), at, 9, 9);
             dc.DrawEllipse(strong, null, at, 3, 3);
             string now = live.Percent switch { null => "BIOS", 0 => "off", { } p => $"{p:0} %" };
-            Label(dc, $"now {live.Temperature:0} °C · {now}", new Point(at.X + 14, at.Y - 14), strong, HorizontalAlignment.Left, size: 12, bold: true);
+            // near the right edge the label goes to the left of the ring
+            bool left = at.X > plot.Right - 190;
+            var anchor = left ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            double x = left ? at.X - 14 : at.X + 14;
+            // at the bottom both lines go above the ring, clear of the axis
+            bool low = percent < 12;
+            Label(dc, $"now {live.Temperature:0} °C · {now}", new Point(x, low ? at.Y - 34 : at.Y - 14), strong, anchor, size: 12, bold: true);
+            if (live.Note is { } note)
+                Label(dc, note, new Point(x, low ? at.Y - 18 : at.Y + 2), text, anchor, size: 11);
         }
 
         // the points to drag

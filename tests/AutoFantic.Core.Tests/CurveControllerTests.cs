@@ -102,6 +102,54 @@ public class CurveControllerTests
     }
 
     [Fact]
+    public void A_curve_drawn_down_to_0_percent_switches_off_there_and_on_again_5_degrees_higher()
+    {
+        var calibration = Calibration();
+        calibration = calibration with { Groups = [calibration.Groups[0] with { Curve = [new(40, 0), new(50, 0), new(60, 30), new(82, 100)] }, calibration.Groups[1]] };
+        var c = new CurveController(calibration, [30, 40]);
+        var t = T0;
+
+        Assert.Equal(50, CurveController.OffTemperature(calibration.Groups[0]));
+        Assert.Equal(0, Hold(c, ref t, 60, cpu: 49, gpu: 40, cpuW: 30, gpuW: 100)[0]);
+        Assert.Equal(0, Hold(c, ref t, 60, cpu: 54, gpu: 40, cpuW: 30, gpuW: 100)[0]); // between: stays off
+        Assert.NotEqual(0, Hold(c, ref t, 60, cpu: 56, gpu: 40, cpuW: 30, gpuW: 100)[0]);
+        Assert.Equal(CurveController.OffBelow, CurveController.OffTemperature(calibration.Groups[1])); // no 0 % point: the default
+    }
+
+    [Fact]
+    public void A_fan_follows_its_own_part_but_stays_on_while_anything_is_warm()
+    {
+        var c = Controller();
+        var t = T0;
+
+        // the CPU is cool, the GPU a little warm (a high idle draw): the CPU fan may still stop …
+        Assert.Equal(0, Hold(c, ref t, 60, cpu: 45, gpu: 58, cpuW: 30, gpuW: 100)[0]);
+        Assert.Equal(0, Hold(c, ref t, 60, cpu: 45, gpu: 63, cpuW: 30, gpuW: 100)[0]);
+        // … but once anything is really warm every fan turns
+        Assert.NotEqual(0, Hold(c, ref t, 30, cpu: 45, gpu: 67, cpuW: 30, gpuW: 100)[0]);
+    }
+
+    [Fact]
+    public void Says_why_a_fan_is_not_on_its_curve()
+    {
+        var c = Controller();
+        var t = T0;
+
+        Hold(c, ref t, 60, cpu: 81, gpu: 80, cpuW: 90, gpuW: 250);
+        var cooler = Hold(c, ref t, 10, cpu: 60, gpu: 60, cpuW: 90, gpuW: 250);
+
+        // after a hot spell the fan is above the curve and comes down gently
+        Assert.Equal(FanNote.SlowingDown, c.Status[0].Note);
+        Assert.True(cooler[0] > c.Status[0].CurvePercent);
+
+        // a curve asking for less than the fan turns at (30 % where it only spins from 35 %)
+        var slow = new CurveController(Calibration(), [35, 40]);
+        Hold(slow, ref t, 60, cpu: 40, gpu: 45, cpuW: 90, gpuW: 250);
+        Assert.Equal(FanNote.Slowest, slow.Status[0].Note);
+        Assert.Equal(FanNote.OnCurve, slow.Status[1].Note);
+    }
+
+    [Fact]
     public void Above_the_last_point_the_fans_run_flat_out()
     {
         Assert.Equal(100, CurveController.Interpolate([new(45, 30), new(82, 100)], 90));

@@ -3,13 +3,14 @@ using System.Text.Json.Serialization;
 
 namespace AutoFantic.Core.Calibration;
 
-/// <summary>A curve the user set by hand for one fan group, and whether it may stop at idle.</summary>
+/// <summary>A curve the user set by hand for one fan group, and whether it may stop at low load while cool.</summary>
 public sealed record CurveOverride(IReadOnlyList<CurvePoint> Curve, bool AllowOff);
 
 /// <summary>
 /// The user's own curves (runs\curves.json), laid over the calibrated ones. A new calibration
-/// doesn't touch them; "Reset to recommended" removes one. A fan may only be allowed to stop where
-/// the calibration found stopping safe: the setting can switch it off, never on.
+/// doesn't touch them; "Reset to recommended" removes one. The user may let a fan stop that the
+/// calibration keeps turning (the window offers it only for fans that measurably stood still at
+/// 0 %); the fan control still switches it on again as soon as it gets warm.
 /// </summary>
 public sealed record CurveOverrides(IReadOnlyDictionary<string, CurveOverride> ByGroup)
 {
@@ -36,7 +37,7 @@ public sealed record CurveOverrides(IReadOnlyDictionary<string, CurveOverride> B
         calibration with
         {
             Groups = calibration.Groups
-                .Select(g => For(g) is { } o ? g with { Curve = o.Curve, OffAt = o.AllowOff ? g.OffAt : [] } : g)
+                .Select(g => For(g) is { } o ? g with { Curve = o.Curve, OffAt = o.AllowOff ? (g.OffAt.Count > 0 ? g.OffAt : ["idle"]) : [] } : g)
                 .ToList(),
         };
 

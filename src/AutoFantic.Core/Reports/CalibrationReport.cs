@@ -46,7 +46,7 @@ public static class CalibrationReport
             foreach (var line in fansOff.Summary)
                 text.AppendLine($"   {line}");
         }
-        text.AppendLine($"   a fan is only off while CPU ≤ {result.StopCpuWatts:0} W, GPU ≤ {result.StopGpuWatts:0} W and both stay ≤ {MixOptimizer.StopOnlyBelow:0} °C");
+        text.AppendLine($"   a fan is only off while CPU ≤ {result.StopCpuWatts:0} W, GPU ≤ {result.StopGpuWatts:0} W, the part it cools ≤ {Control.CurveController.OffBelow:0} °C and nothing above {Control.CurveController.OthersBelow:0} °C");
         text.AppendLine();
 
         text.AppendLine($"Fan speeds for {result.Profile}, per load level");

@@ -6,16 +6,20 @@ namespace AutoFantic.Core.Control;
 /// Runs the fans by the calibrated curves, for whatever the PC is doing. Each group follows the
 /// temperature of the part it cools, smoothed over a few seconds (a CPU sensor jumps with every
 /// burst of work). Fans speed up quickly and slow down gently, because changing noise is more
-/// annoying than steady noise. At low load and low temperature a group that may stop is switched
-/// off, with hysteresis and minimum on/off times so it doesn't keep cycling.
+/// annoying than steady noise. At low load a group that may stop is switched off while the part
+/// it cools is cool and nothing else is warm, with hysteresis and minimum on/off times so it
+/// doesn't keep cycling.
 /// </summary>
 public sealed class CurveController
 {
-    /// <summary>A fan may switch off only below this (°C, CPU and GPU core, smoothed) …</summary>
+    /// <summary>A fan may switch off while the part it follows is at most this warm (°C, smoothed), unless its curve says otherwise …</summary>
     public const double OffBelow = 55;
 
-    /// <summary>… and switches back on above this.</summary>
-    public const double OnAbove = MixOptimizer.StopOnlyBelow;
+    /// <summary>… and switches back on this much above where it switched off.</summary>
+    public const double Hysteresis = 5;
+
+    /// <summary>No fan is off while the CPU or the GPU is warmer than this; above this + <see cref="Hysteresis"/> every fan runs.</summary>
+    public const double OthersBelow = MixOptimizer.StopOnlyBelow;
 
     public const double RampUpPerSecond = 4;
     public const double RampDownPerSecond = 1;
@@ -32,6 +36,7 @@ public sealed class CurveController
     private readonly CalibrationResult _calibration;
     private readonly double[] _minSpinning;
     private readonly GroupState[] _state;
+    private readonly FanStatus[] _status;
     private readonly Dictionary<Component, double> _smoothed = [];
     private DateTimeOffset? _last;
 
@@ -50,6 +55,21 @@ public sealed class CurveController
         _calibration = calibration;
         _minSpinning = minSpinning.ToArray();
         _state = calibration.Groups.Select(_ => new GroupState()).ToArray();
+        _status = calibration.Groups.Select(_ => new FanStatus(null, null, FanNote.OnCurve)).ToArray();
+    }
+
+    /// <summary>Per group, after the last step: the temperature it followed, what the curve says there, and why it runs at the speed it does.</summary>
+    public IReadOnlyList<FanStatus> Status => _status;
+
+    /// <summary>
+    /// Where a group that may stop switches off: at or below the last of its curve's leading 0 %
+    /// points (the user drew "off" there), otherwise at <see cref="OffBelow"/>. Never above
+    /// <see cref="OthersBelow"/>: off is only for a cool PC.
+    /// </summary>
+    public static double OffTemperature(CalibratedGroup group)
+    {
+        var off = group.Curve.TakeWhile(p => p.Percent <= 0).ToList();
+        return off.Count > 0 ? Math.Clamp(off[^1].Temperature, 30, OthersBelow) : OffBelow;
     }
 
     /// <summary>Smoothed temperatures the controller is working with.</summary>
@@ -88,7 +108,7 @@ public sealed class CurveController
             _smoothed[component] = _smoothed.TryGetValue(component, out double old) ? old + (value - old) * a : value;
         }
 
-        double cpu = _smoothed.GetValueOrDefault(Component.Cpu), gpu = _smoothed.GetValueOrDefault(Component.GpuCore);
+        double warmest = Math.Max(_smoothed.GetValueOrDefault(Component.Cpu), _smoothed.GetValueOrDefault(Component.GpuCore));
         bool lowLoad = cpuPower <= _calibration.StopCpuWatts && gpuPower <= _calibration.StopGpuWatts;
 
         var output = new double[_state.Length];
@@ -96,12 +116,15 @@ public sealed class CurveController
         {
             var group = _calibration.Groups[g];
             var state = _state[g];
+            double temperature = _smoothed.GetValueOrDefault(group.Follows);
+            double offAt = OffTemperature(group);
             bool mayStop = group.OffAt.Count > 0 && lowLoad;
 
             if (state.Off)
             {
-                bool mustStart = !mayStop || cpu > OnAbove || gpu > OnAbove;
-                if (mustStart && (now - state.Since >= MinOff || cpu > OnAbove || gpu > OnAbove))
+                // warm again: on right away; load came: on once it has been off a while (a blip doesn't start it)
+                bool warm = temperature > offAt + Hysteresis || warmest > OthersBelow + Hysteresis;
+                if (warm || (!mayStop && now - state.Since >= MinOff))
                 {
                     state.Off = false;
                     state.Since = now;
@@ -109,24 +132,33 @@ public sealed class CurveController
                     state.Percent = _minSpinning[g];
                 }
             }
-            else if (mayStop && cpu <= OffBelow && gpu <= OffBelow && now - state.Since >= MinOn)
+            else if (mayStop && temperature <= offAt && warmest <= OthersBelow && now - state.Since >= MinOn)
             {
                 state.Off = true;
                 state.Since = now;
             }
 
+            double curve = Interpolate(group.Curve, temperature);
             if (state.Off)
             {
                 output[g] = 0;
+                _status[g] = new FanStatus(temperature, curve, FanNote.Off);
                 continue;
             }
 
-            double target = Math.Max(Interpolate(group.Curve, _smoothed.GetValueOrDefault(group.Follows)), _minSpinning[g]);
+            double target = Math.Max(curve, _minSpinning[g]);
             state.Percent = double.IsNaN(state.Percent) ? target
                 : target > state.Percent
                 ? Math.Min(target, state.Percent + RampUpPerSecond * dt)
                 : Math.Max(target, state.Percent - RampDownPerSecond * dt);
-            output[g] = now < state.KickUntil ? Math.Max(state.Percent, KickPercent) : state.Percent;
+            bool kick = now < state.KickUntil;
+            output[g] = kick ? Math.Max(state.Percent, KickPercent) : state.Percent;
+            _status[g] = new FanStatus(temperature, curve,
+                kick ? FanNote.Starting
+                : state.Percent > target + 0.5 ? FanNote.SlowingDown
+                : state.Percent < target - 0.5 ? FanNote.SpeedingUp
+                : curve < _minSpinning[g] - 0.5 ? FanNote.Slowest
+                : FanNote.OnCurve);
         }
         return output;
     }
@@ -147,3 +179,29 @@ public sealed class CurveController
         return curve[^1].Percent;
     }
 }
+
+/// <summary>Why a fan runs at the speed it does right now.</summary>
+public enum FanNote
+{
+    /// <summary>Exactly what the curve says.</summary>
+    OnCurve,
+
+    /// <summary>Above the curve: slowing down gently after it was warmer (a sudden drop in noise is as noticeable as a rise).</summary>
+    SlowingDown,
+
+    /// <summary>Below the curve: speeding up to it.</summary>
+    SpeedingUp,
+
+    /// <summary>The curve asks for less than the fan can turn at: the slowest speed it reliably spins.</summary>
+    Slowest,
+
+    /// <summary>Switched off: low load, cool.</summary>
+    Off,
+
+    /// <summary>Just switched on again: a short push so it reliably starts turning.</summary>
+    Starting,
+}
+
+/// <param name="Temperature">The smoothed temperature the group follows (what the curve is read at).</param>
+/// <param name="CurvePercent">What the curve says at that temperature.</param>
+public sealed record FanStatus(double? Temperature, double? CurvePercent, FanNote Note);

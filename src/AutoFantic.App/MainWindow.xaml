@@ -212,7 +212,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <CheckBox x:Name="AllowStop" Content="Switch off at idle while it's cool" />
+                                <CheckBox x:Name="AllowStop" Content="Switch off when the PC is idle and cool" />
+                                <TextBlock x:Name="StopHint" Style="{StaticResource Caption}" Margin="28,2,16,0" TextWrapping="Wrap" />
                                 <TextBlock x:Name="CurveHint" Style="{StaticResource Caption}" Margin="0,8,16,0"
                                            Text="Drag a point to change it · double-click to add a point · right-click a point to remove it. Changes apply right away; the safety limits always stay on." />
                             </StackPanel>

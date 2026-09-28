@@ -135,7 +135,7 @@ public static class CalibrationPage
             double cpuOff = result.Ambient + fansOff.CpuPower * r.GetValueOrDefault(Component.Cpu);
             html.Append($"<p class=\"note\">With every fan off at idle the CPU would head for about {cpuOff:0} °C and the GPU for about {gpuOff:0} °C " +
                 $"(measured {fansOff.Created:dd.MM. HH:mm}, CPU {fansOff.CpuPower:0} W, GPU {fansOff.GpuPower:0} W). " +
-                $"A fan is only switched off while CPU and GPU stay at or below {MixOptimizer.StopOnlyBelow:0} °C.</p>");
+                $"A fan is only switched off at low load while the part it cools is at or below {Control.CurveController.OffBelow:0} °C (or where its curve is drawn down to 0 %) and nothing is above {Control.CurveController.OthersBelow:0} °C.</p>");
             if (fansOff.GpuPower > 60)
                 html.Append($"<p class=\"note\">Your graphics card uses {fansOff.GpuPower:0} W while idle; 20–30 W would be normal. That keeps it too warm for its fans to stop. " +
                     "Often the cause is several monitors or a high refresh rate keeping the memory clock up; in the NVIDIA Control Panel, " +
