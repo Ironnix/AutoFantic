@@ -7,6 +7,18 @@ internal static class Usage
         Console.WriteLine("""
             autofanatic-spike: Phase 0 test tool (run as administrator)
 
+              test     [--runs folder]
+                  The menu Start-Test.cmd opens: find my fans, auto-calibrate, best curves,
+                  plus the optional tests. Asks for admin rights itself; results go to runs\.
+
+              calibrate [--ambient 22] [--profile 80] [--hold 75] [--runs folder] [--no-load]
+                  The quick calibration: a steady built-in CPU + GPU load, 9 fan combinations,
+                  then the quietest fan speeds per load level and a curve per fan. 12-20 min.
+                  Uses runsans.json (from "Find my fans"); runs discover first if it's missing.
+
+              load     [--seconds 30] [--cpu 0.6] [--gpu 0.9]
+                  Just the built-in load, to check it works. Changes no fans; no admin needed.
+
               list     [--out hardware.txt]
                   Every sensor and every controllable fan, plus the key sensors
                   AutoFanatic picked (CPU/GPU temperature and power).
@@ -14,17 +26,19 @@ internal static class Usage
               watch    [--csv log.csv] [--interval 1]
                   One status line per second: temperatures, power, fan RPM and %,
                   and whether CPU/GPU temperatures have settled. Read-only.
-                  The CSV also records the program in the foreground (e.g. the game).
+                  The CSV also records the program in the foreground (e.g. the game);
+                  replay it with "analyze".
 
-              discover [--steps 30,60,100] [--settle 8] [--skip 3,4] [--out discover.txt] [--force]
-                  Runs every fan channel through a few speeds, one after another:
-                  which control drives which fan, empty headers, fans that stop, pumps.
+              discover [--steps 100,60,30] [--settle 8] [--skip 3,4] [--out discover.txt] [--force]
+                  Runs every fan channel through a few speeds, fast to slow, one after
+                  another: which control drives which fan, empty headers, fans that stop,
+                  pumps. A channel that looks like a pump is never taken lower.
 
               set      <channel> <percent> [--seconds 60] [--force]
                   Holds one fan channel at a fixed speed, then hands it back to the BIOS.
 
               sweep    <channels> [--steps 100,80,60,45,30] [--ambient 22] [--window 60]
-                       [--max-wait 420] [--csv sweep.csv] [--force]
+                       [--max-wait 420] [--csv sweep.csv] [--out sweep.txt] [--force]
                   Under a steady load (game, benchmark loop): steps the fan group from
                   fast to slow, waits at each step until temperatures settle, and finds
                   the knee, the speed beyond which more RPM is not worth the noise.
@@ -34,9 +48,20 @@ internal static class Usage
                   Emergency: hands EVERY fan back to BIOS/driver control
                   (e.g. after the tool was killed in Task Manager).
 
+              analyze  <watch.csv> [--profile 80] [--experiment 6] [--cooldown 10] [--out analysis.txt]
+                  Replays a watch log (e.g. an evening of gaming) through the experiment
+                  rules: how often could AutoFanatic have learned, and what blocked it.
+                  Reads only the file: no admin rights needed.
+
             Channels are the # numbers from "list" (or full ids). Below 25 % needs --force,
-            because a pump could sit on that header. Every command that changes a fan stops
-            and restores the BIOS curve at CPU ≥ 90 °C, GPU core ≥ 85 °C, hotspot/memory ≥ 100 °C.
+            because a pump could sit on that header. At CPU ≥ 90 °C, GPU core ≥ 85 °C or
+            hotspot/memory ≥ 100 °C every fan goes to 100 % until it is safely cool again,
+            then back to the BIOS curve.
+
+            --simulate [--sim-speed 20] [--sim-load idle|game|session]
+                Any command against a built-in simulated PC (no admin, no real fans).
+                discover defaults to idle load, everything else to a steady game;
+                "session" is a scripted hour of desktop, loading, play and menus.
             """);
     }
 

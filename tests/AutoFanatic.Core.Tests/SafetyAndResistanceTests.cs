@@ -32,6 +32,22 @@ public class SafetyAndResistanceTests
         Assert.Null(new SafetyLimits().Check(new Snapshot(DateTimeOffset.Now, []), Keys));
 
     [Fact]
+    public void Recovery_needs_ten_seconds_safely_below_every_limit()
+    {
+        var recovery = new SafetyRecovery(new SafetyLimits(), Keys);
+        var t0 = DateTimeOffset.Now;
+        Snapshot At(double seconds, float gpu) => With(75, gpu, 85) with { Time = t0.AddSeconds(seconds) };
+
+        Assert.False(recovery.IsRecovered(At(0, 86)));  // over the 85 °C GPU limit
+        Assert.False(recovery.IsRecovered(At(1, 81)));  // below the limit, but not 5 °C below
+        Assert.False(recovery.IsRecovered(At(2, 79)));  // cool from here …
+        Assert.False(recovery.IsRecovered(At(8, 79)));
+        Assert.False(recovery.IsRecovered(At(9, 81)));  // … warm again: the 10 s start over
+        Assert.False(recovery.IsRecovered(At(10, 78)));
+        Assert.True(recovery.IsRecovered(At(20, 78)));
+    }
+
+    [Fact]
     public void Thermal_resistance_is_rise_over_ambient_per_watt() =>
         Assert.Equal(0.2, ThermalResistance.Compute(75, 25, 250)!.Value, precision: 6);
 

@@ -26,6 +26,45 @@ public class SimulatedPcTests
     }
 
     [Fact]
+    public void Session_clock_is_the_simulated_clock()
+    {
+        var (pc, clock) = Create();
+        clock.Advance(TimeSpan.FromMinutes(3));
+
+        Assert.Equal(clock.Now, pc.Now);
+        Assert.Equal(clock.Now, pc.Read().Time);
+    }
+
+    [Fact]
+    public void Sped_up_clock_runs_ahead_of_real_time()
+    {
+        using var pc = new SimulatedPc(timeScale: 50);
+        var start = pc.Now;
+        Thread.Sleep(200);
+
+        Assert.Equal(50, pc.TimeScale);
+        Assert.True(pc.Now - start >= TimeSpan.FromSeconds(5)); // 0.2 s × 50 = 10 s
+    }
+
+    [Fact]
+    public void A_session_moves_from_desktop_into_the_game_and_heats_up()
+    {
+        var clock = new FakeClock();
+        using var pc = new SimulatedPc(load: SimLoad.Session, clock: () => clock.Now);
+        var keys = KeySensors.Detect(pc.Read());
+
+        Assert.Equal("explorer", pc.Foreground());
+        double desktopGpu = pc.Read().Value(keys.GpuTemp)!.Value;
+
+        clock.Advance(TimeSpan.FromMinutes(10));
+        var inGame = pc.Read();
+
+        Assert.Equal("SimGame", pc.Foreground());
+        Assert.True(inGame.Value(keys.GpuLoad) > 90);
+        Assert.True(inGame.Value(keys.GpuTemp) > desktopGpu + 20);
+    }
+
+    [Fact]
     public void Key_sensors_are_detected_like_on_real_hardware()
     {
         var (pc, _) = Create();
@@ -37,6 +76,8 @@ public class SimulatedPcTests
         Assert.NotNull(keys.GpuHotspot);
         Assert.NotNull(keys.GpuMemory);
         Assert.NotNull(keys.GpuPower);
+        Assert.NotNull(keys.CpuLoad);
+        Assert.NotNull(keys.GpuLoad);
         Assert.Equal(4, pc.Channels.Count);
     }
 

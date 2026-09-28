@@ -26,9 +26,4 @@ internal static class Format
         { } v when kind is SensorKind.Fan or SensorKind.Clock => v.ToString("0", CultureInfo.InvariantCulture),
         { } v => v.ToString("0.0", CultureInfo.InvariantCulture),
     };
-
-    public static string Csv(float? value) =>
-        value?.ToString("0.###", CultureInfo.InvariantCulture) ?? "";
-
-    public static string CsvText(string text) => "\"" + text.Replace("\"", "\"\"") + "\"";
 }

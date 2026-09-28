@@ -20,7 +20,7 @@ internal static class ListCommand
         return 0;
     }
 
-    private static string Build(FanSession session, Snapshot snapshot)
+    internal static string Build(FanSession session, Snapshot snapshot)
     {
         var text = new StringBuilder();
         text.AppendLine($"AutoFanatic hardware report · {snapshot.Time:yyyy-MM-dd HH:mm}");
@@ -49,7 +49,7 @@ internal static class ListCommand
         foreach (var channel in session.Channels)
         {
             string mode = channel.IsSoftwareControlled ? "software" : "BIOS/driver";
-            text.AppendLine($"   #{channel.Index,-2} {channel.Hardware} / {channel.Name,-22} {Format.Value(channel.Percent, SensorKind.Control),8}   " +
+            text.AppendLine($"   #{channel.Index,-2} {channel.Hardware + " / " + channel.Name,-44} {Format.Value(channel.Percent, SensorKind.Control),8}   " +
                             $"range {channel.MinPercent:0}–{channel.MaxPercent:0} %   {mode}   {channel.Id}");
         }
 

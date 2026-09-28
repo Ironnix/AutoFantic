@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Principal;
 using AutoFanatic.Core.Hardware;
@@ -18,59 +20,153 @@ if (args.Length == 0 || args[0] is "help" or "-h" or "--help")
     return 0;
 }
 
-// --simulate [--sim-speed 10]: a made-up PC instead of the real hardware (no admin needed)
-bool simulate = args.Contains("--simulate");
-double simSpeed = 1;
-if (Array.IndexOf(args, "--sim-speed") is int s and >= 0 && s + 1 < args.Length)
+// analyze only replays a log file: no hardware, no admin rights
+if (args[0] == "analyze")
 {
-    simSpeed = double.Parse(args[s + 1], CultureInfo.InvariantCulture);
-    args = [.. args[..s], .. args[(s + 2)..]];
+    try
+    {
+        return AnalyzeCommand.Run(args[1..]);
+    }
+    catch (Exception ex) when (ex is UsageException or FormatException or IOException)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 2;
+    }
 }
-args = args.Where(a => a != "--simulate").ToArray();
 
-if (!simulate && !IsAdministrator())
+// load only runs the built-in calibration load: no fans, no admin rights
+if (args[0] == "load")
 {
-    Console.Error.WriteLine("autofanatic-spike needs admin rights (it loads the hardware driver).");
-    Console.Error.WriteLine("Open Terminal / PowerShell with \"Run as administrator\" and start it again.");
+    CtrlC.Install();
+    return LoadCommand.Run(args[1..], CtrlC.Token);
+}
+
+// --simulate [--sim-speed 10] [--sim-load idle|game|session]: a made-up PC instead of the real hardware (no admin needed)
+bool simulate = args.Contains("--simulate");
+args = args.Where(a => a != "--simulate").ToArray();
+if (args.Length == 0)
+{
+    Usage.Print();
+    return 0;
+}
+
+string? simSpeedText = TakeOption(ref args, "--sim-speed");
+double simSpeed = 1;
+if (simSpeedText is not null
+    && (!double.TryParse(simSpeedText, NumberStyles.Float, CultureInfo.InvariantCulture, out simSpeed) || simSpeed is < 0.1 or > 100))
+{
+    Console.Error.WriteLine($"--sim-speed must be a number from 0.1 to 100, not \"{simSpeedText}\".");
     return 2;
 }
 
-using var cancel = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) =>
+// discover and the calibration start at idle (the calibration brings its own load), the rest under a steady game
+string simLoad = TakeOption(ref args, "--sim-load") ?? (args[0] is "discover" or "calibrate" or "test" ? "idle" : "game");
+Func<TimeSpan, SimLoad>? simSchedule = simLoad switch
 {
-    e.Cancel = true; // let the command finish its loop and restore the fans itself
-    cancel.Cancel();
+    "idle" => _ => SimLoad.Idle,
+    "game" => _ => SimLoad.Game,
+    "session" => SimLoad.Session,
+    _ => null,
 };
+if (simSchedule is null)
+{
+    Console.Error.WriteLine($"--sim-load must be idle, game or session, not \"{simLoad}\".");
+    return 2;
+}
+
+// the test menu runs in its own window (Start-Test.cmd): keep it open when something goes wrong
+bool pauseOnError = args[0] == "test" && !Console.IsInputRedirected;
+
+if (!simulate && !IsAdministrator())
+{
+    // the test menu asks Windows for admin rights itself, so a double-click is enough
+    if (args[0] == "test" && RestartAsAdministrator(args))
+        return 0;
+
+    Console.Error.WriteLine("autofanatic-spike needs admin rights (it loads the hardware driver).");
+    Console.Error.WriteLine("Open Terminal / PowerShell with \"Run as administrator\" and start it again.");
+    PauseIf(pauseOnError);
+    return 2;
+}
+
+// Ctrl+C cancels the running command, which then hands its fans back to the BIOS itself
+CtrlC.Install();
 
 try
 {
-    using FanSession session = simulate ? new SimulatedPc(timeScale: simSpeed) : new HardwareSession();
+    using FanSession session = simulate
+        ? new SimulatedPc(timeScale: simSpeed, load: simSchedule)
+        : new HardwareSession();
     AppDomain.CurrentDomain.ProcessExit += (_, _) => session.RestoreAll();
 
     if (simulate)
-        Console.WriteLine($"SIMULATION: no real fans are touched (speed ×{simSpeed:0.#}).\n");
+        Console.WriteLine($"SIMULATION: no real fans are touched (speed ×{simSpeed:0.#}, {simLoad} load).\n");
 
     return args[0] switch
     {
         "list" => ListCommand.Run(session, args[1..]),
-        "watch" => WatchCommand.Run(session, args[1..], cancel.Token),
-        "set" => SetCommand.Run(session, args[1..], cancel.Token),
-        "discover" => DiscoverCommand.Run(session, args[1..], cancel.Token),
-        "sweep" => SweepCommand.Run(session, args[1..], cancel.Token),
+        "watch" => WatchCommand.Run(session, args[1..], CtrlC.Token),
+        "set" => SetCommand.Run(session, args[1..], CtrlC.Token),
+        "discover" => DiscoverCommand.Run(session, args[1..], CtrlC.Token),
+        "sweep" => SweepCommand.Run(session, args[1..], CtrlC.Token),
         "restore" => RestoreCommand.Run(session),
+        "test" => TestCommand.Run(session, args[1..], simulate),
+        "calibrate" => CalibrateCommand.Run(session, args[1..], CtrlC.Token),
         _ => Usage.Unknown(args[0]),
     };
 }
 catch (UsageException ex)
 {
     Console.Error.WriteLine(ex.Message);
+    PauseIf(pauseOnError);
     return 2;
 }
 catch (Exception ex)
 {
     Console.Error.WriteLine($"Error: {ex.Message}");
     Console.Error.WriteLine(ex);
+    PauseIf(pauseOnError);
     return 1;
+}
+
+static void PauseIf(bool pause)
+{
+    if (!pause)
+        return;
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("Press Enter to close this window.");
+    Console.ReadLine();
+}
+
+// Starts this exe again with the same arguments, elevated (Windows shows its admin prompt).
+static bool RestartAsAdministrator(string[] args)
+{
+    try
+    {
+        var start = new ProcessStartInfo(Environment.ProcessPath!)
+        {
+            UseShellExecute = true,
+            Verb = "runas",
+            Arguments = string.Join(' ', args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a)),
+        };
+        Process.Start(start);
+        return true;
+    }
+    catch (Win32Exception)
+    {
+        return false; // the admin prompt was declined
+    }
+}
+
+// Removes "--name value" from args and returns the value (null if absent).
+static string? TakeOption(ref string[] args, string name)
+{
+    int i = Array.IndexOf(args, name);
+    if (i < 0 || i + 1 >= args.Length)
+        return null;
+    string value = args[i + 1];
+    args = [.. args[..i], .. args[(i + 2)..]];
+    return value;
 }
 
 static bool IsAdministrator()

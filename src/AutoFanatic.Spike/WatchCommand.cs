@@ -1,5 +1,5 @@
-using System.Text;
 using AutoFanatic.Core.Hardware;
+using AutoFanatic.Core.Logging;
 
 namespace AutoFanatic.Spike;
 
@@ -12,7 +12,10 @@ internal static class WatchCommand
 
         var first = session.Read();
         var status = new StatusLine(first, session.Channels);
-        using var csv = options.Get("--csv") is { } path ? new CsvLog(path, first) : null;
+        string? logPath = options.Get("--csv");
+        using var csv = logPath is null ? null : new SensorLogWriter(logPath, first);
+        if (logPath is not null)
+            Console.WriteLine($"Logging to {Path.GetFullPath(logPath)} (replay it later with \"analyze\")");
 
         Console.WriteLine("Watching (read-only, no fan is changed). Ctrl+C stops.");
         Console.WriteLine(status.Header());
@@ -22,42 +25,14 @@ internal static class WatchCommand
         {
             var snapshot = session.Read();
             Console.WriteLine(status.Render(snapshot));
-            csv?.Write(snapshot);
+            csv?.Write(snapshot, session.Foreground());
 
             if (++lines % 30 == 0)
                 Console.WriteLine(status.Header());
 
-            cancel.WaitHandle.WaitOne(interval);
+            cancel.WaitHandle.WaitOne(interval / session.TimeScale);
         }
 
         return 0;
     }
-}
-
-/// <summary>
-/// Wide CSV: one row per sample, the program in the foreground (e.g. the game), then one column
-/// per sensor (header = "hardware | name | id").
-/// </summary>
-internal sealed class CsvLog : IDisposable
-{
-    private readonly StreamWriter _writer;
-    private readonly List<string> _ids;
-
-    public CsvLog(string path, Snapshot first)
-    {
-        _writer = new StreamWriter(path, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-        _ids = first.Readings.Select(r => r.Id).ToList();
-        _writer.WriteLine("time,foreground," + string.Join(',', first.Readings.Select(r => Format.CsvText($"{r.Hardware} | {r.Name} | {r.Id}"))));
-        Console.WriteLine($"Logging to {Path.GetFullPath(path)}");
-    }
-
-    public void Write(Snapshot snapshot)
-    {
-        var values = _ids.Select(id => Format.Csv(snapshot.Value(id)));
-        string foreground = Format.CsvText(ForegroundProcess.Name() ?? "");
-        _writer.WriteLine($"{snapshot.Time:yyyy-MM-dd HH:mm:ss},{foreground}," + string.Join(',', values));
-        _writer.Flush();
-    }
-
-    public void Dispose() => _writer.Dispose();
 }

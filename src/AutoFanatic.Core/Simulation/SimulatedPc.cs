@@ -9,6 +9,7 @@ namespace AutoFanatic.Core.Simulation;
 /// speed and flattens out at high speed, so there is a real knee to find.
 ///
 /// Fans: CPU fan, case fans, pump (barely reacts to duty cycle) and a GPU fan with 0-RPM mode.
+/// What the PC is doing (power, load, foreground program) comes from a <see cref="SimLoad"/> schedule.
 /// </summary>
 public sealed class SimulatedPc : FanSession
 {
@@ -23,6 +24,8 @@ public sealed class SimulatedPc : FanSession
     ];
 
     private readonly Func<DateTimeOffset> _clock;
+    private readonly Func<TimeSpan, SimLoad> _schedule;
+    private readonly DateTimeOffset _start;
     private readonly Random _noise;
     private readonly float[] _percent = new float[Fans.Length];
     private readonly bool[] _software = new bool[Fans.Length];
@@ -32,19 +35,19 @@ public sealed class SimulatedPc : FanSession
     private double _cpuTemp, _gpuTemp;
 
     /// <param name="timeScale">Simulated seconds per real second (e.g. 10 runs a sweep ten times faster).</param>
+    /// <param name="load">What the PC does over time since the start; default: a steady game (<see cref="SimLoad.Game"/>).</param>
     /// <param name="clock">Time source; tests pass a fake one to step the model deterministically.</param>
     public SimulatedPc(
         double timeScale = 1,
         double ambient = 22,
-        double cpuPower = 120,
-        double gpuPower = 280,
+        Func<TimeSpan, SimLoad>? load = null,
         int seed = 1,
         Func<DateTimeOffset>? clock = null)
     {
         Ambient = ambient;
-        CpuPower = cpuPower;
-        GpuPower = gpuPower;
+        _schedule = load ?? (_ => SimLoad.Game);
         _noise = new Random(seed);
+        TimeScale = timeScale;
 
         if (clock is null)
         {
@@ -52,6 +55,7 @@ public sealed class SimulatedPc : FanSession
             clock = () => realStart + (DateTimeOffset.Now - realStart) * timeScale;
         }
         _clock = clock;
+        _start = _clock();
 
         for (int i = 0; i < Fans.Length; i++)
             _percent[i] = Fans[i].Default;
@@ -68,16 +72,35 @@ public sealed class SimulatedPc : FanSession
         // start in equilibrium with the BIOS defaults, like a PC that has been running a while
         _cpuTemp = CpuTarget();
         _gpuTemp = GpuTarget();
-        _lastUpdate = _clock();
+        _lastUpdate = _start;
     }
 
     public double Ambient { get; set; }
 
-    public double CpuPower { get; set; }
+    /// <summary>What the PC is doing right now.</summary>
+    public SimLoad Load => _testLoad ?? _schedule(_clock() - _start);
 
-    public double GpuPower { get; set; }
+    private SimLoad? _testLoad;
+
+    public override IDisposable StartTestLoad(out string description)
+    {
+        _testLoad = SimLoad.Calibration;
+        description = "simulated CPU + GPU load";
+        return new StopLoad(this);
+    }
+
+    private sealed class StopLoad(SimulatedPc pc) : IDisposable
+    {
+        public void Dispose() => pc._testLoad = null;
+    }
 
     public override IReadOnlyList<FanChannel> Channels => _channels;
+
+    public override DateTimeOffset Now => _clock();
+
+    public override double TimeScale { get; }
+
+    public override string? Foreground() => Load.Foreground;
 
     /// <summary>Thermal resistance of the CPU cooler in °C/W for the given fan speeds.</summary>
     public static double CpuResistance(double cpuFan, double caseFans) =>
@@ -93,7 +116,8 @@ public sealed class SimulatedPc : FanSession
         Advance((now - _lastUpdate).TotalSeconds);
         _lastUpdate = now;
 
-        double cpuW = Jitter(CpuPower, 0.02), gpuW = Jitter(GpuPower, 0.02);
+        var load = Load;
+        double cpuW = Jitter(load.CpuPower, 0.02), gpuW = Jitter(load.GpuPower, 0.02);
         double cpuT = _cpuTemp + Noise(0.15), gpuT = _gpuTemp + Noise(0.15);
 
         const string cpu = "Simulated CPU", superIo = "Simulated Super I/O", gpu = "Simulated GPU";
@@ -101,6 +125,7 @@ public sealed class SimulatedPc : FanSession
         [
             new("/sim/cpu/temperature/0", cpu, "Cpu", SensorKind.Temperature, "Core (Tctl/Tdie)", F(cpuT)),
             new("/sim/cpu/power/0", cpu, "Cpu", SensorKind.Power, "Package", F(cpuW)),
+            new("/sim/cpu/load/0", cpu, "Cpu", SensorKind.Load, "CPU Total", F(Math.Clamp(Jitter(load.CpuLoad, 0.05), 0, 100))),
 
             new("/sim/superio/fan/0", superIo, "SuperIO", SensorKind.Fan, "CPU Fan", Rpm(CpuFan)),
             new("/sim/superio/fan/1", superIo, "SuperIO", SensorKind.Fan, "Case Fan", Rpm(CaseFans)),
@@ -113,6 +138,7 @@ public sealed class SimulatedPc : FanSession
             new("/sim/gpu/temperature/1", gpu, "GpuNvidia", SensorKind.Temperature, "GPU Hot Spot", F(gpuT + 0.045 * gpuW)),
             new("/sim/gpu/temperature/2", gpu, "GpuNvidia", SensorKind.Temperature, "GPU Memory Junction", F(gpuT + 6)),
             new("/sim/gpu/power/0", gpu, "GpuNvidia", SensorKind.Power, "GPU Package", F(gpuW)),
+            new("/sim/gpu/load/0", gpu, "GpuNvidia", SensorKind.Load, "GPU Core", F(Math.Clamp(Jitter(load.GpuLoad, 0.02), 0, 100))),
             new("/sim/gpu/fan/0", gpu, "GpuNvidia", SensorKind.Fan, "GPU Fan", Rpm(GpuFan)),
             new(Fans[GpuFan].Id, gpu, "GpuNvidia", SensorKind.Control, "GPU Fan", _percent[GpuFan]),
         ];
@@ -128,9 +154,9 @@ public sealed class SimulatedPc : FanSession
         _gpuTemp += (GpuTarget() - _gpuTemp) * (1 - Math.Exp(-seconds / 40.0));
     }
 
-    private double CpuTarget() => Ambient + CpuPower * CpuResistance(_percent[CpuFan], _percent[CaseFans]);
+    private double CpuTarget() => Ambient + Load.CpuPower * CpuResistance(_percent[CpuFan], _percent[CaseFans]);
 
-    private double GpuTarget() => Ambient + GpuPower * GpuResistance(Effective(GpuFan), _percent[CaseFans]);
+    private double GpuTarget() => Ambient + Load.GpuPower * GpuResistance(Effective(GpuFan), _percent[CaseFans]);
 
     // The GPU fan stops below 31 % (0-RPM mode), like many real cards.
     private float Effective(int fan) => fan == GpuFan && _percent[fan] <= 30 ? 0 : _percent[fan];

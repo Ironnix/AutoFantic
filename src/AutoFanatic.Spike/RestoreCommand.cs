@@ -17,7 +17,7 @@ internal static class RestoreCommand
         {
             try
             {
-                session.RestoreDefault(channel);
+                session.ForceRestore(channel);
                 Console.WriteLine($"   {channel}: back to BIOS/driver control");
             }
             catch (Exception ex)

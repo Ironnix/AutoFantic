@@ -13,3 +13,9 @@ logs/
 hardware*.txt
 discover*.txt
 sweep*.txt
+
+# local connector config (points at a private server)
+.mcp.json
+
+# test runs on real hardware (hardware dumps, logs, sweep reports)
+runs/

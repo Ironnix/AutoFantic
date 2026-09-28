@@ -31,7 +31,7 @@ internal static class SweepCommand
         var options = new Options(args, "--force");
         if (options.Positional.Count != 1)
         {
-            Console.Error.WriteLine("Usage: sweep <channels> [--steps 100,80,60,45,30] [--ambient 22] [--window 60] [--max-wait 420] [--csv sweep.csv] [--force]");
+            Console.Error.WriteLine("Usage: sweep <channels> [--steps 100,80,60,45,30] [--ambient 22] [--window 60] [--max-wait 420] [--csv sweep.csv] [--out sweep.txt] [--force]");
             return 2;
         }
 
@@ -86,6 +86,15 @@ internal static class SweepCommand
         string report = Report(results, ambient);
         Console.Write(report);
 
+        if (options.Get("--out") is { } outPath)
+        {
+            string header = $"AutoFanatic sweep · {first.Time:yyyy-MM-dd HH:mm} · {string.Join(", ", channels)} · steps {string.Join(" → ", steps)} %\n"
+                + (guard.StopReason is { } stop ? $"Ended early: {stop}\n" : "")
+                + "\n";
+            File.WriteAllText(outPath, header + report, Encoding.UTF8);
+            Console.WriteLine($"Report written to {Path.GetFullPath(outPath)}");
+        }
+
         if (options.Get("--csv") is { } path)
         {
             WriteCsv(path, results, ambient);
@@ -114,7 +123,7 @@ internal static class SweepCommand
         var cpu = new SteadyStateDetector(window);
         var gpu = new SteadyStateDetector(window);
         var samples = new SnapshotWindow(window);
-        var started = DateTimeOffset.Now;
+        var started = session.Now;
         int tick = 0;
 
         bool Settled() =>
@@ -145,7 +154,7 @@ internal static class SweepCommand
             samples.Mean(keys.GpuMemory),
             samples.Mean(keys.GpuPower),
             Settled(),
-            DateTimeOffset.Now - started);
+            session.Now - started);
     }
 
     private static void PrintIntro(

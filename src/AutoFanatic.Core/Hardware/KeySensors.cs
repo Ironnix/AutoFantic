@@ -7,7 +7,9 @@ public sealed record KeySensors(
     string? GpuTemp,
     string? GpuHotspot,
     string? GpuMemory,
-    string? GpuPower)
+    string? GpuPower,
+    string? CpuLoad = null,
+    string? GpuLoad = null)
 {
     // Names as LibreHardwareMonitor reports them, best match first.
     private static readonly string[] CpuTempNames = ["Core (Tctl/Tdie)", "CPU Package", "Core (Tctl)", "Tctl", "Core Average", "Core Max"];
@@ -16,6 +18,8 @@ public sealed record KeySensors(
     private static readonly string[] GpuHotspotNames = ["GPU Hot Spot", "GPU Hotspot"];
     private static readonly string[] GpuMemoryNames = ["GPU Memory Junction", "GPU Memory"];
     private static readonly string[] GpuPowerNames = ["GPU Package", "GPU Power", "GPU Board Power", "GPU Core"];
+    private static readonly string[] CpuLoadNames = ["CPU Total"];
+    private static readonly string[] GpuLoadNames = ["GPU Core", "D3D 3D"];
 
     public static KeySensors Detect(Snapshot snapshot)
     {
@@ -28,7 +32,9 @@ public sealed record KeySensors(
             GpuTemp: Pick(gpu, SensorKind.Temperature, GpuTempNames),
             GpuHotspot: Pick(gpu, SensorKind.Temperature, GpuHotspotNames),
             GpuMemory: Pick(gpu, SensorKind.Temperature, GpuMemoryNames),
-            GpuPower: Pick(gpu, SensorKind.Power, GpuPowerNames));
+            GpuPower: Pick(gpu, SensorKind.Power, GpuPowerNames),
+            CpuLoad: Pick(cpu, SensorKind.Load, CpuLoadNames),
+            GpuLoad: Pick(gpu, SensorKind.Load, GpuLoadNames));
     }
 
     /// <summary>
