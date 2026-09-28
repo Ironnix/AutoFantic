@@ -10,12 +10,22 @@ internal static class Autostart
 {
     private const string TaskName = "AutoFantic";
 
+    /// <summary>The task the app made before the rename; it points to an exe that no longer exists.</summary>
+    private const string LegacyTaskName = "AutoFanatic";
+
     public static bool IsEnabled() => Schtasks(["/Query", "/TN", TaskName]) == 0;
 
     public static bool Enable() =>
         Schtasks(["/Create", "/TN", TaskName, "/TR", $"\"{Environment.ProcessPath}\"", "/SC", "ONLOGON", "/RL", "HIGHEST", "/F"]) == 0;
 
     public static bool Disable() => Schtasks(["/Delete", "/TN", TaskName, "/F"]) == 0;
+
+    /// <summary>Removes the "AutoFanatic" task from before the rename, if it's still there.</summary>
+    public static void RemoveLegacy()
+    {
+        if (Schtasks(["/Query", "/TN", LegacyTaskName]) == 0)
+            Schtasks(["/Delete", "/TN", LegacyTaskName, "/F"]);
+    }
 
     private static int Schtasks(string[] args)
     {
