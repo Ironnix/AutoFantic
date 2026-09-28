@@ -5,7 +5,7 @@ namespace AutoFanatic.Spike;
 
 internal static class WatchCommand
 {
-    public static int Run(HardwareSession session, string[] args, CancellationToken cancel)
+    public static int Run(FanSession session, string[] args, CancellationToken cancel)
     {
         var options = new Options(args);
         var interval = TimeSpan.FromSeconds(Math.Max(0.25, options.GetDouble("--interval", 1)));
@@ -34,7 +34,10 @@ internal static class WatchCommand
     }
 }
 
-/// <summary>Wide CSV: one row per sample, one column per sensor (header = "hardware | name | id").</summary>
+/// <summary>
+/// Wide CSV: one row per sample, the program in the foreground (e.g. the game), then one column
+/// per sensor (header = "hardware | name | id").
+/// </summary>
 internal sealed class CsvLog : IDisposable
 {
     private readonly StreamWriter _writer;
@@ -44,14 +47,15 @@ internal sealed class CsvLog : IDisposable
     {
         _writer = new StreamWriter(path, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
         _ids = first.Readings.Select(r => r.Id).ToList();
-        _writer.WriteLine("time," + string.Join(',', first.Readings.Select(r => Format.CsvText($"{r.Hardware} | {r.Name} | {r.Id}"))));
+        _writer.WriteLine("time,foreground," + string.Join(',', first.Readings.Select(r => Format.CsvText($"{r.Hardware} | {r.Name} | {r.Id}"))));
         Console.WriteLine($"Logging to {Path.GetFullPath(path)}");
     }
 
     public void Write(Snapshot snapshot)
     {
         var values = _ids.Select(id => Format.Csv(snapshot.Value(id)));
-        _writer.WriteLine($"{snapshot.Time:yyyy-MM-dd HH:mm:ss}," + string.Join(',', values));
+        string foreground = Format.CsvText(ForegroundProcess.Name() ?? "");
+        _writer.WriteLine($"{snapshot.Time:yyyy-MM-dd HH:mm:ss},{foreground}," + string.Join(',', values));
         _writer.Flush();
     }
 

@@ -16,7 +16,9 @@ public sealed class SteadyStateDetector(
     // At low power (idle) a relative check is too strict: a few watts of jitter are always allowed.
     private const double MinAllowedSwingWatts = 3;
 
-    private readonly Queue<(DateTimeOffset Time, double Temp, double Power)> _samples = new();
+    // Oldest first. Trimmed so that exactly one sample sits at or beyond the window's start:
+    // then the samples always span the whole window, whatever the sampling interval.
+    private readonly List<(DateTimeOffset Time, double Temp, double Power)> _samples = [];
 
     public TimeSpan Window { get; } = window;
 
@@ -26,14 +28,14 @@ public sealed class SteadyStateDetector(
 
     public void Add(DateTimeOffset time, double temperature, double power)
     {
-        _samples.Enqueue((time, temperature, power));
-        while (_samples.Count > 0 && time - _samples.Peek().Time > Window)
-            _samples.Dequeue();
+        _samples.Add((time, temperature, power));
+        while (_samples.Count > 1 && time - _samples[1].Time >= Window)
+            _samples.RemoveAt(0);
     }
 
     public void Reset() => _samples.Clear();
 
-    /// <summary>True once the window is (almost) full and both conditions hold.</summary>
+    /// <summary>True once the window is full and both conditions hold.</summary>
     public bool IsSteady =>
         IsWindowFull
         && SlopePerMinute is { } slope && Math.Abs(slope) <= MaxSlopePerMinute
@@ -41,7 +43,7 @@ public sealed class SteadyStateDetector(
 
     public bool IsWindowFull =>
         _samples.Count >= MinSamples
-        && _samples.Last().Time - _samples.Peek().Time >= Window * 0.95;
+        && _samples[^1].Time - _samples[0].Time >= Window;
 
     public double? MeanTemperature => _samples.Count == 0 ? null : _samples.Average(s => s.Temp);
 
@@ -55,7 +57,7 @@ public sealed class SteadyStateDetector(
             if (_samples.Count < 2)
                 return null;
 
-            var t0 = _samples.Peek().Time;
+            var t0 = _samples[0].Time;
             double n = _samples.Count;
             double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
             foreach (var (time, temp, _) in _samples)

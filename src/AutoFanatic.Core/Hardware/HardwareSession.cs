@@ -5,14 +5,11 @@ namespace AutoFanatic.Core.Hardware;
 /// <summary>
 /// Direct access to sensors and fan headers through LibreHardwareMonitorLib.
 /// Needs admin rights (the library loads the PawnIO kernel driver).
-/// Disposing the session hands every fan it changed back to BIOS / driver control.
 /// </summary>
-public sealed class HardwareSession : IDisposable
+public sealed class HardwareSession : FanSession
 {
     private readonly Computer _computer;
-    private readonly HashSet<FanChannel> _touched = [];
-    private readonly Lock _lock = new();
-    private bool _disposed;
+    private readonly List<FanChannel> _channels;
 
     public HardwareSession()
     {
@@ -26,87 +23,45 @@ public sealed class HardwareSession : IDisposable
         _computer.Open();
         Update();
 
-        Channels = AllSensors()
+        _channels = AllSensors()
             .Where(s => s.SensorType == SensorType.Control && s.Control is not null)
-            .Select((s, i) => new FanChannel(i, s))
+            .Select((s, i) => ToChannel(i, s))
             .ToList();
     }
 
-    public IReadOnlyList<FanChannel> Channels { get; }
+    public override IReadOnlyList<FanChannel> Channels => _channels;
 
-    /// <summary>Hardware tree as found by the library (for the "list" dump).</summary>
-    public IReadOnlyList<IHardware> Hardware => _computer.Hardware.ToList();
-
-    public Snapshot Read()
+    protected override Snapshot ReadCore()
     {
-        lock (_lock)
-        {
-            Update();
-            var readings = AllSensors()
-                .Select(s => new SensorReading(
-                    s.Identifier.ToString(),
-                    s.Hardware.Name,
-                    s.Hardware.HardwareType.ToString(),
-                    ToKind(s.SensorType),
-                    s.Name,
-                    s.Value))
-                .ToList();
-            return new Snapshot(DateTimeOffset.Now, readings);
-        }
+        Update();
+        var readings = AllSensors()
+            .Select(s => new SensorReading(
+                s.Identifier.ToString(),
+                s.Hardware.Name,
+                s.Hardware.HardwareType.ToString(),
+                ToKind(s.SensorType),
+                s.Name,
+                s.Value))
+            .ToList();
+        return new Snapshot(DateTimeOffset.Now, readings);
     }
 
-    /// <summary>Sets a fan to a fixed duty cycle, clamped to what the channel allows.</summary>
-    public float SetPercent(FanChannel channel, float percent)
-    {
-        lock (_lock)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            float value = Math.Clamp(percent, channel.MinPercent, channel.MaxPercent);
-            _touched.Add(channel);
-            channel.Set(value);
-            return value;
-        }
-    }
+    protected override void DisposeCore() => _computer.Close();
 
-    public void RestoreDefault(FanChannel channel)
+    private static FanChannel ToChannel(int index, ISensor sensor)
     {
-        lock (_lock)
-        {
-            channel.RestoreDefault();
-            _touched.Remove(channel);
-        }
-    }
-
-    /// <summary>Hands every fan this session changed back to the BIOS / driver. Never throws.</summary>
-    public void RestoreAll()
-    {
-        lock (_lock)
-        {
-            foreach (var channel in _touched)
-            {
-                try
-                {
-                    channel.RestoreDefault();
-                }
-                catch
-                {
-                    // keep going: the other fans must be restored even if one fails
-                }
-            }
-            _touched.Clear();
-        }
-    }
-
-    public void Dispose()
-    {
-        lock (_lock)
-        {
-            if (_disposed)
-                return;
-            RestoreAll();
-            _computer.Close();
-            _disposed = true;
-        }
+        var control = sensor.Control;
+        return new FanChannel(
+            index,
+            sensor.Identifier.ToString(),
+            sensor.Name,
+            sensor.Hardware.Name,
+            control.MinSoftwareValue,
+            control.MaxSoftwareValue,
+            percent: () => sensor.Value,
+            isSoftwareControlled: () => control.ControlMode == ControlMode.Software,
+            set: control.SetSoftware,
+            restoreDefault: control.SetDefault);
     }
 
     private void Update() => _computer.Accept(new UpdateVisitor());
@@ -118,6 +73,7 @@ public sealed class HardwareSession : IDisposable
                 yield return sensor;
     }
 
+    // Includes sub-hardware: the mainboard's Super I/O chip, which carries the fan headers, is one.
     private static IEnumerable<ISensor> SensorsOf(IHardware hardware)
     {
         foreach (var sensor in hardware.Sensors)

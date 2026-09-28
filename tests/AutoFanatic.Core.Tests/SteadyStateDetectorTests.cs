@@ -73,4 +73,16 @@ public class SteadyStateDetectorTests
         Assert.True(detector.IsSteady);
         Assert.Equal(70, detector.MeanTemperature!.Value, precision: 3);
     }
+
+    [Fact]
+    public void Coarse_uneven_sampling_still_fills_the_window()
+    {
+        // one sample every 5.06 s, like a slow sensor read: the window must still count as full
+        var detector = new SteadyStateDetector(TimeSpan.FromSeconds(60));
+        for (int i = 0; i < 20; i++)
+            detector.Add(Start.AddMilliseconds(i * 5060), 70, 250);
+
+        Assert.True(detector.IsWindowFull);
+        Assert.True(detector.IsSteady);
+    }
 }

@@ -11,3 +11,5 @@ logs/
 
 # machine-specific dumps (describe your PC; keep them out of a public repo)
 hardware*.txt
+discover*.txt
+sweep*.txt

@@ -1,44 +1,44 @@
-using LibreHardwareMonitor.Hardware;
-
 namespace AutoFanatic.Core.Hardware;
 
 /// <summary>
-/// A controllable fan output: a mainboard header (Super I/O PWM channel) or a GPU fan.
-/// Speeds are only changed through <see cref="HardwareSession"/>, which remembers every
-/// channel it touched and hands all of them back to the BIOS / driver when it ends.
+/// A controllable fan output: a mainboard header (Super I/O PWM channel), a GPU fan, or a
+/// simulated one. Speeds are only changed through a <see cref="FanSession"/>, which remembers
+/// every channel it touched and hands all of them back to the BIOS / driver when it ends.
 /// </summary>
-public sealed class FanChannel
+public sealed class FanChannel(
+    int index,
+    string id,
+    string name,
+    string hardware,
+    float minPercent,
+    float maxPercent,
+    Func<float?> percent,
+    Func<bool> isSoftwareControlled,
+    Action<float> set,
+    Action restoreDefault)
 {
-    private readonly ISensor _sensor;
+    /// <summary>Position in <see cref="FanSession.Channels"/>; handy on the command line.</summary>
+    public int Index { get; } = index;
 
-    internal FanChannel(int index, ISensor sensor)
-    {
-        Index = index;
-        _sensor = sensor;
-    }
+    public string Id { get; } = id;
 
-    /// <summary>Position in <see cref="HardwareSession.Channels"/>; handy on the command line.</summary>
-    public int Index { get; }
+    public string Name { get; } = name;
 
-    public string Id => _sensor.Identifier.ToString();
+    public string Hardware { get; } = hardware;
 
-    public string Name => _sensor.Name;
+    public float MinPercent { get; } = minPercent;
 
-    public string Hardware => _sensor.Hardware.Name;
+    public float MaxPercent { get; } = maxPercent;
 
     /// <summary>Current duty cycle in percent as reported by the hardware.</summary>
-    public float? Percent => _sensor.Value;
-
-    public float MinPercent => _sensor.Control.MinSoftwareValue;
-
-    public float MaxPercent => _sensor.Control.MaxSoftwareValue;
+    public float? Percent => percent();
 
     /// <summary>True while AutoFanatic (or another program) drives the channel instead of the BIOS / driver.</summary>
-    public bool IsSoftwareControlled => _sensor.Control.ControlMode == ControlMode.Software;
+    public bool IsSoftwareControlled => isSoftwareControlled();
 
-    internal void Set(float percent) => _sensor.Control.SetSoftware(percent);
+    internal void Set(float value) => set(value);
 
-    internal void RestoreDefault() => _sensor.Control.SetDefault();
+    internal void RestoreDefault() => restoreDefault();
 
     public override string ToString() => $"#{Index} {Hardware} / {Name}";
 }

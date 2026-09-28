@@ -1,18 +1,18 @@
 using System.Globalization;
-using AutoFanatic.Core.Analysis;
 using AutoFanatic.Core.Hardware;
 
 namespace AutoFanatic.Spike;
 
 internal static class SetCommand
 {
-    private const float LowPercentNeedsForce = 25;
+    public const float LowPercentNeedsForce = 25;
+
     private const double MaxSeconds = 600;
 
     // A fan counts as "reacted" when its RPM changed by at least this much.
-    private const float ReactionRpm = 150;
+    public const float ReactionRpm = 150;
 
-    public static int Run(HardwareSession session, string[] args, CancellationToken cancel)
+    public static int Run(FanSession session, string[] args, CancellationToken cancel)
     {
         var options = new Options(args, "--force");
         var positional = options.Positional;
@@ -22,12 +22,13 @@ internal static class SetCommand
             return 2;
         }
 
-        var channel = Resolve(session, positional[0]);
-        if (channel is null)
+        var channels = Options.ParseChannels(session, positional[0]);
+        if (channels.Count != 1)
         {
-            Console.Error.WriteLine($"No fan channel \"{positional[0]}\". Run \"list\" to see them.");
+            Console.Error.WriteLine("set takes exactly one channel; use sweep for several.");
             return 2;
         }
+        var channel = channels[0];
 
         if (!float.TryParse(positional[1].TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float percent))
         {
@@ -35,22 +36,19 @@ internal static class SetCommand
             return 2;
         }
 
-        if (percent < LowPercentNeedsForce && !options.Has("--force"))
-        {
-            Console.Error.WriteLine($"Below {LowPercentNeedsForce:0} % needs --force: if a pump or a fan that stalls sits on this header, it could stop.");
+        if (!CheckLowPercent([percent], options))
             return 2;
-        }
 
         double seconds = Math.Clamp(options.GetDouble("--seconds", 60), 5, MaxSeconds);
-        var limits = new SafetyLimits();
 
+        Guard.WarnAboutOtherFanTools();
         var before = session.Read();
         var status = new StatusLine(before, session.Channels);
+        var guard = new Guard(session, status.Keys, cancel);
 
-        string? violation = limits.Check(before, status.Keys);
-        if (violation is not null)
+        if (!guard.CheckNow())
         {
-            Console.Error.WriteLine($"Not starting: {violation}.");
+            Console.Error.WriteLine($"Not starting: {guard.StopReason}.");
             return 3;
         }
 
@@ -58,43 +56,31 @@ internal static class SetCommand
         Console.WriteLine($"{channel} → {applied:0} % for {seconds:0} s. Ctrl+C hands it back to the BIOS early.");
         Console.WriteLine(status.Header());
 
-        var end = DateTimeOffset.Now.AddSeconds(seconds);
-        Snapshot last = before;
-        int exitCode = 0;
-
         try
         {
-            while (!cancel.IsCancellationRequested && DateTimeOffset.Now < end)
-            {
-                cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
-                last = session.Read();
-                Console.WriteLine(status.Render(last));
-
-                violation = limits.Check(last, status.Keys);
-                if (violation is not null)
-                {
-                    Console.WriteLine($"SAFETY STOP: {violation}.");
-                    exitCode = 3;
-                    break;
-                }
-            }
+            guard.Wait(TimeSpan.FromSeconds(seconds), s => Console.WriteLine(status.Render(s)));
         }
         finally
         {
             session.RestoreDefault(channel);
-            Console.WriteLine($"{channel} handed back to BIOS/driver control.");
         }
 
-        ReportReactions(before, last);
-        return exitCode;
+        if (guard.StopReason is { } reason)
+            Console.WriteLine(reason + ".");
+        Console.WriteLine($"{channel} handed back to BIOS/driver control.");
+
+        ReportReactions(before, guard.Last ?? before);
+        return guard.StopReason?.StartsWith("SAFETY", StringComparison.Ordinal) == true ? 3 : 0;
     }
 
-    private static FanChannel? Resolve(HardwareSession session, string text)
+    /// <summary>Very low speeds could stop a pump; they need an explicit --force.</summary>
+    public static bool CheckLowPercent(IEnumerable<float> percents, Options options)
     {
-        string trimmed = text.TrimStart('#');
-        if (int.TryParse(trimmed, out int index))
-            return session.Channels.FirstOrDefault(c => c.Index == index);
-        return session.Channels.FirstOrDefault(c => c.Id == text);
+        if (options.Has("--force") || percents.All(p => p >= LowPercentNeedsForce))
+            return true;
+
+        Console.Error.WriteLine($"Below {LowPercentNeedsForce:0} % needs --force: if a pump or a fan that stalls sits on this header, it could stop.");
+        return false;
     }
 
     /// <summary>Which fans changed speed while the channel was held: this maps a control to its RPM sensor.</summary>

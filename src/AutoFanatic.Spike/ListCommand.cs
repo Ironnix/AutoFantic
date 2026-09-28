@@ -1,12 +1,11 @@
 using System.Text;
 using AutoFanatic.Core.Hardware;
-using LibreHardwareMonitor.Hardware;
 
 namespace AutoFanatic.Spike;
 
 internal static class ListCommand
 {
-    public static int Run(HardwareSession session, string[] args)
+    public static int Run(FanSession session, string[] args)
     {
         var options = new Options(args);
         var snapshot = session.Read();
@@ -21,14 +20,20 @@ internal static class ListCommand
         return 0;
     }
 
-    private static string Build(HardwareSession session, Snapshot snapshot)
+    private static string Build(FanSession session, Snapshot snapshot)
     {
         var text = new StringBuilder();
         text.AppendLine($"AutoFanatic hardware report · {snapshot.Time:yyyy-MM-dd HH:mm}");
         text.AppendLine();
 
-        foreach (var hardware in session.Hardware)
-            AppendHardware(text, hardware, snapshot, depth: 0);
+        // grouped by hardware in the order the library reports it (the Super I/O chip carries the mainboard fans)
+        foreach (var hardware in snapshot.Readings.GroupBy(r => (r.Hardware, r.HardwareType)))
+        {
+            text.AppendLine($"== {hardware.Key.Hardware} ({hardware.Key.HardwareType})");
+            foreach (var reading in hardware.OrderBy(r => r.Kind))
+                text.AppendLine($"   {reading.Kind,-11} {reading.Name,-28} {Format.Value(reading.Value, reading.Kind),12}   {reading.Id}");
+            text.AppendLine();
+        }
 
         var keys = KeySensors.Detect(snapshot);
         text.AppendLine("== Key sensors (what AutoFanatic will use)");
@@ -53,31 +58,12 @@ internal static class ListCommand
             text.AppendLine("   None found. Either the mainboard's Super I/O chip isn't supported, or the PawnIO");
             text.AppendLine("   driver is missing (LibreHardwareMonitor needs it; see README → Troubleshooting).");
         }
-        else if (!session.Channels.Any(c => c.Id.StartsWith("/lpc/", StringComparison.Ordinal)))
+        else if (!snapshot.Readings.Any(r => r.HardwareType == "SuperIO" && r.Kind == SensorKind.Control))
         {
             text.AppendLine("   Only GPU fans found, no mainboard headers: Super I/O chip unsupported or PawnIO missing.");
         }
 
         return text.ToString();
-    }
-
-    private static void AppendHardware(StringBuilder text, IHardware hardware, Snapshot snapshot, int depth)
-    {
-        string indent = new(' ', depth * 3);
-        text.AppendLine($"{indent}== {hardware.Name} ({hardware.HardwareType})");
-
-        foreach (var sensor in hardware.Sensors.OrderBy(s => s.SensorType).ThenBy(s => s.Index))
-        {
-            var reading = snapshot.Find(sensor.Identifier.ToString());
-            if (reading is null)
-                continue;
-            text.AppendLine($"{indent}   {reading.Kind,-11} {reading.Name,-28} {Format.Value(reading.Value, reading.Kind),12}   {reading.Id}");
-        }
-
-        foreach (var sub in hardware.SubHardware)
-            AppendHardware(text, sub, snapshot, depth + 1);
-
-        text.AppendLine();
     }
 
     private static void AppendKey(StringBuilder text, string label, string? id, Snapshot snapshot)
