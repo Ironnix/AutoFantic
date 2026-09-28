@@ -21,7 +21,7 @@
 | Phase | Content | State |
 |----|----|----|
 | 0 | Test tool: read sensors, drive fan headers, find fans, knee sweep, simulated PC | ✅ tested on the real PC (sensors, fan control, discover) |
-| 0.5 | Quick auto-calibration: built-in load, 9-run plan, thermal model, quietest mix per load level, curves | ✅ code ready, first real run pending |
+| 0.5 | Calibration while gaming (power-following fit), fans-off test, quietest mix per load level, curves, "Use my curves" controller | ✅ code ready, first real run pending |
 | 1 | Background service, logging, load detection | planned |
 | 2 | Setup wizard: find fans, what they cool, pump detection | planned |
 | 3 | Learning: experiments during steady load, thermal model | planned |
@@ -55,7 +55,8 @@ Everything runs in a terminal **as administrator** (the hardware driver needs it
 |----|----|
 | `list --out hardware.txt` | every sensor and controllable fan, plus the key sensors AutoFanatic picked |
 | `watch [--csv log.csv]` | one status line per second, read-only; the CSV also records the foreground program |
-| `calibrate [--ambient 22] [--profile 80]` | **the quick calibration** (what menu step 2 runs): built-in load, 9 fan combinations, then the quietest mix per load level and a curve per fan |
+| `calibrate [--ambient 22] [--profile 80] [--builtin-load]` | **the calibration** (menu step 2): while you play (or with the built-in load), 9 fan combinations, then the quietest mix per load level and a curve per fan |
+| `run` | **use the curves** (menu step 4): AutoFanatic controls the fans until Ctrl+C |
 | `load [--seconds 30]` | just the built-in CPU + GPU load, to check it works (no admin, no fans touched) |
 | `analyze <log.csv>` | replays a `watch` log through the experiment rules from the design: how often could AutoFanatic have learned during that session, and what blocked it (unstable load, too hot, idle). No admin needed |
 | `discover` | runs each fan channel through 100 / 60 / 30 %: which control drives which fan, empty headers, 0-RPM fans, pumps. A channel that looks like a pump is never taken lower |
@@ -65,21 +66,22 @@ Everything runs in a terminal **as administrator** (the hardware driver needs it
 
 Add `--simulate` to any command to run it against a built-in simulated PC: no admin rights, no real fans touched. `--sim-speed 20` runs it 20× faster (a full sweep in under a minute), `--sim-load idle|game|session` picks the load (`discover` defaults to idle, everything else to a steady game; `session` is a scripted hour of desktop, loading, play and menus, handy for `watch --csv` + `analyze`). Useful to see what the output looks like before trying it on real hardware.
 
-### Start here: find my fans, auto-calibrate
+### Start here
 
 **Double-click `Start-Test.cmd`** in the repo folder and allow the Windows admin prompt. A menu opens:
 
 | Step | When | What it does |
 |----|----|----|
-| 1 Find my fans | PC idle, about 2 min | runs each fan output through 100 / 60 / 30 % and keeps only the headers that really have a fan; GPU fans of one card become one group; pumps are recognised and never used |
-| 2 Auto-calibrate | 12–20 min, don't use the PC | puts its own steady load on CPU and GPU, tries 9 fan combinations (a Taguchi L9 plan, so every group's effect can be separated), predicts where each temperature settles from the first minute or so, fits the thermal model, and computes the **quietest fan speeds for every load level** under Max 80 / Max 90 |
-| 3 Show my best curves | any time | what each fan cools, the table idle → full load, and a curve per fan (fan % by temperature) for the BIOS or MSI Afterburner |
+| 1 Find my fans | once, PC idle, about 2 min | runs each fan output through 100 / 60 / 30 % and keeps only the headers that really have a fan; GPU fans of one card become one group; pumps are recognised and never used |
+| 2 Calibrate | while you play, 15–30 min | if the PC is idle at the start, first a **fans-off test** (which fans stop at 0 %, how warm it gets without them). Then, while your game runs, 9 fan combinations (a Taguchi L9 plan, so every group's effect can be separated); for each it fits how the temperatures **follow the power second by second**, which gives °C per watt even with a jumpy game load. From that: the **quietest fan speeds for every load level**, from idle to 30 % beyond the heaviest load seen, and a curve per fan that ends at 100 % just above the target. `b` uses the built-in CPU + GPU load instead of a game |
+| 3 Show my best curves | any time | what each fan cools, the table idle → beyond, a curve per fan |
+| 4 Use my curves | any time | AutoFanatic runs the fans with those curves, for games and everything else, until Enter: smoothed temperatures, +4 %/s up, −1 %/s down, fans **off** at low load while CPU and GPU stay ≤ 55 °C (on again above 60 °C), a short kick when a stopped fan starts |
 
-Optional: record a gaming session (then `analyze`), measure one fan group by hand (`sweep`), crash test.
+`9 More` has the developer tests (record a gaming session, measure one fan group, crash test).
 
 Everything is saved in `runs\` (git-ignored: it describes your machine); `--simulate` runs write into `runs\sim\`. Before starting, turn **off fan control in other fan tools** (Argus Monitor, Fan Control, Armoury Crate, iCUE, MSI Afterburner's fan curve); monitoring may stay.
 
-The single commands in the table above do the same things by hand from an admin terminal.
+"Use my curves" runs in its window for now; a background service that starts with Windows (and a watchdog) is the next step.
 
 ## Safety
 

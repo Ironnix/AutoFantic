@@ -11,10 +11,15 @@ internal static class Usage
                   The menu Start-Test.cmd opens: find my fans, auto-calibrate, best curves,
                   plus the optional tests. Asks for admin rights itself; results go to runs\.
 
-              calibrate [--ambient 22] [--profile 80] [--hold 75] [--runs folder] [--no-load]
-                  The quick calibration: a steady built-in CPU + GPU load, 9 fan combinations,
-                  then the quietest fan speeds per load level and a curve per fan. 12-20 min.
-                  Uses runsans.json (from "Find my fans"); runs discover first if it's missing.
+              calibrate [--ambient 22] [--profile 80] [--hold 90] [--runs folder] [--builtin-load]
+                  While you play (or with --builtin-load): 9 fan combinations, how the
+                  temperatures follow the power, then the quietest fan speeds per load level
+                  and a curve per fan. A fans-off test first if the PC is idle. 15-30 min.
+                  Uses runs\fans.json (from "Find my fans"); runs discover first if it's missing.
+
+              run      [--runs folder]
+                  "Use my curves": AutoFanatic runs the fans with the calibrated curves until
+                  Ctrl+C, for everything the PC does. Safety limits stay active.
 
               load     [--seconds 30] [--cpu 0.6] [--gpu 0.9]
                   Just the built-in load, to check it works. Changes no fans; no admin needed.

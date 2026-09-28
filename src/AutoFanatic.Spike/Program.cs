@@ -60,7 +60,7 @@ if (simSpeedText is not null
 }
 
 // discover and the calibration start at idle (the calibration brings its own load), the rest under a steady game
-string simLoad = TakeOption(ref args, "--sim-load") ?? (args[0] is "discover" or "calibrate" or "test" ? "idle" : "game");
+string simLoad = TakeOption(ref args, "--sim-load") ?? (args[0] is "discover" or "calibrate" or "test" or "run" ? "idle" : "game");
 Func<TimeSpan, SimLoad>? simSchedule = simLoad switch
 {
     "idle" => _ => SimLoad.Idle,
@@ -80,7 +80,7 @@ bool pauseOnError = args[0] == "test" && !Console.IsInputRedirected;
 if (!simulate && !IsAdministrator())
 {
     // the test menu asks Windows for admin rights itself, so a double-click is enough
-    if (args[0] == "test" && RestartAsAdministrator(args))
+    if (args[0] == "test" && !Console.IsInputRedirected && RestartAsAdministrator(args))
         return 0;
 
     Console.Error.WriteLine("autofanatic-spike needs admin rights (it loads the hardware driver).");
@@ -112,6 +112,7 @@ try
         "restore" => RestoreCommand.Run(session),
         "test" => TestCommand.Run(session, args[1..], simulate),
         "calibrate" => CalibrateCommand.Run(session, args[1..], CtrlC.Token),
+        "run" => RunCommand.Run(session, args[1..], CtrlC.Token),
         _ => Usage.Unknown(args[0]),
     };
 }

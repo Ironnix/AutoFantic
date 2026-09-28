@@ -60,13 +60,25 @@ public sealed class MixOptimizer(ThermalModel model, IReadOnlyList<FanGroup> gro
     private const double Step = 5;
 
     /// <summary>
-    /// A fan may only stand still (0-RPM mode) while every temperature stays at or below this. The
-    /// calibration never measures stopped fans under load, so the model would be guessing beyond it;
-    /// graphics cards' own 0-RPM modes switch the fans on around here too.
+    /// Fans may be off (0-RPM) while the CPU and GPU core stay at or below this. The calibration
+    /// measures "all fans off" only at idle, so beyond this the model would be guessing; graphics
+    /// cards' own 0-RPM modes switch their fans on around here too.
     /// </summary>
-    public const double StopOnlyBelow = 55;
+    public const double StopOnlyBelow = 60;
 
     public IReadOnlyList<FanGroup> Groups => groups;
+
+    /// <summary>
+    /// Fans may only be off while the load is low: CPU and GPU power at or below these. Off is for
+    /// idle and light use, not for a game that happens to run cool.
+    /// </summary>
+    public (double Cpu, double Gpu) StopOnlyUpTo { get; init; } = (double.PositiveInfinity, double.PositiveInfinity);
+
+    /// <summary>
+    /// Measured °C per watt with every fan that can stop standing still (the fans-off test). The
+    /// model is fitted to spinning fans only; for "everything off" this measurement is used instead.
+    /// </summary>
+    public IReadOnlyDictionary<Component, double>? AllOffResistance { get; init; }
 
     public Profile Profile => profile;
 
@@ -85,7 +97,8 @@ public sealed class MixOptimizer(ThermalModel model, IReadOnlyList<FanGroup> gro
 
     public Mix Best(double cpuPower, double gpuPower)
     {
-        var choices = groups.Select(Choices).ToList();
+        bool lowLoad = cpuPower <= StopOnlyUpTo.Cpu && gpuPower <= StopOnlyUpTo.Gpu;
+        var choices = groups.Select(g => Choices(g).Where(s => s > 0 || lowLoad).ToList()).ToList();
         var speeds = new double[groups.Count];
         Mix? best = null;
         (double Excess, double Noise, double[] Speeds)? coolest = null;
@@ -95,7 +108,7 @@ public sealed class MixOptimizer(ThermalModel model, IReadOnlyList<FanGroup> gro
             if (g == groups.Count)
             {
                 var temps = Predict(speeds, cpuPower, gpuPower);
-                if (speeds.Any(s => s == 0) && temps.Values.Any(t => t > StopOnlyBelow))
+                if (speeds.Any(s => s == 0) && temps.Any(kv => kv.Key is Component.Cpu or Component.GpuCore && kv.Value > StopOnlyBelow))
                     return;
                 double excess = temps.Max(kv => kv.Value - (profile.Target(kv.Key) - Margin));
                 double noise = NoiseModel.Total(groups, speeds);
@@ -125,8 +138,21 @@ public sealed class MixOptimizer(ThermalModel model, IReadOnlyList<FanGroup> gro
         return new Mix(fallback, Predict(fallback, cpuPower, gpuPower), NoiseModel.Total(groups, fallback), false);
     }
 
-    public Dictionary<Component, double> Predict(IReadOnlyList<double> speeds, double cpuPower, double gpuPower) =>
-        model.Components.ToDictionary(c => c, c => model.Predict(c, speeds, cpuPower, gpuPower));
+    public Dictionary<Component, double> Predict(IReadOnlyList<double> speeds, double cpuPower, double gpuPower)
+    {
+        var temps = model.Components.ToDictionary(c => c, c => model.Predict(c, speeds, cpuPower, gpuPower));
+        if (AllOffResistance is { } off && IsAllOff(speeds))
+        {
+            foreach (var (component, r) in off)
+                temps[component] = model.Ambient + (ThermalModel.IsCpu(component) ? cpuPower : gpuPower) * r;
+        }
+        return temps;
+    }
+
+    // every group that can stop is off, the others at their slowest: the state the fans-off test measured
+    private bool IsAllOff(IReadOnlyList<double> speeds) =>
+        groups.Select((g, i) => g.CanStop ? speeds[i] == 0 : speeds[i] <= g.MinSpinning).All(x => x)
+        && groups.Where((g, i) => g.CanStop).Any();
 
     /// <summary>
     /// The quietest mix for each load level, from light to heavy, made monotone: a fan never runs

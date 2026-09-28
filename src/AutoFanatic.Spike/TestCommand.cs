@@ -10,8 +10,8 @@ using AutoFanatic.Core.Logging;
 namespace AutoFanatic.Spike;
 
 /// <summary>
-/// "test": AutoFanatic as a menu. Find the fans, auto-calibrate, see the best curves; plus the
-/// optional Phase 0 tests. Each step says in plain words what to do and saves its result into one
+/// "test": AutoFanatic as a menu. Find the fans, calibrate while playing, see the best curves,
+/// let AutoFanatic run the fans; the Phase 0 tests are tucked away under "More". Each step says in plain words what to do and saves its result into one
 /// folder (runs\ in the repo), where Claude reads it afterwards. Started by double-clicking Start-Test.cmd.
 /// </summary>
 internal static class TestCommand
@@ -46,13 +46,10 @@ internal static class TestCommand
                     ShowCurves(runs);
                     break;
                 case "4":
-                    RecordSession(session, runs, input);
+                    UseCurves(session, runs, input);
                     break;
-                case "5":
-                    MeasureFans(session, runs, input);
-                    break;
-                case "6":
-                    CrashTest(session, runs, input, simulated);
+                case "9":
+                    More(session, runs, input, simulated);
                     break;
                 case "0" or null:
                     Finish(runs, input);
@@ -75,18 +72,37 @@ internal static class TestCommand
         Console.WriteLine(" AutoFanatic");
         Console.WriteLine($" Results are saved in {runs.Path}");
         Console.WriteLine(Line);
-        Console.WriteLine($"  1  Find my fans            about 2 min, PC idle             {fans}");
-        Console.WriteLine($"  2  Auto-calibrate          12-20 min, don't use the PC     {(latest is null ? "" : $"✓ {latest.LastWriteTime:dd.MM. HH:mm}")}");
+        Console.WriteLine($"  1  Find my fans            once, about 2 min, PC idle       {fans}");
+        Console.WriteLine($"  2  Calibrate               15-30 min, while you play        {(latest is null ? "" : $"✓ {latest.LastWriteTime:dd.MM. HH:mm}")}");
         Console.WriteLine("  3  Show my best curves");
+        Console.WriteLine("  4  Use my curves           AutoFanatic runs your fans until you stop it");
         Console.WriteLine();
-        Console.WriteLine("  optional:");
-        Console.WriteLine($"  4  Record a gaming session   while you play               {Count(runs.Count("watch-*.csv"), "recorded")}");
-        Console.WriteLine($"  5  Measure one fan group     10-25 min, steady load       {Count(runs.Count("sweep-*.txt"), "measured")}");
-        Console.WriteLine($"  6  Crash test                about 1 min                  {(runs.Exists("crash-test.txt") ? "✓ done" : "")}");
+        Console.WriteLine("  9  More (developer tests)");
         Console.WriteLine("  0  Exit");
         Console.WriteLine(Line);
+    }
 
-        static string Count(int n, string text) => n > 0 ? $"✓ {n} {text}" : "";
+    private static void More(FanSession session, RunsFolder runs, LineReader input, bool simulated)
+    {
+        Console.WriteLine("""
+            MORE (developer tests; not needed for normal use)
+              1  Record a gaming session   only watches, then shows how often AutoFanatic could learn
+              2  Measure one fan group     the knee of one fan group by hand, under a steady load
+              3  Crash test                what happens to the fans if AutoFanatic crashes
+              0  Back
+            """);
+        switch (input.Ask("Type a number and press Enter", CtrlC.Reset())?.Trim())
+        {
+            case "1":
+                RecordSession(session, runs, input);
+                break;
+            case "2":
+                MeasureFans(session, runs, input);
+                break;
+            case "3":
+                CrashTest(session, runs, input, simulated);
+                break;
+        }
     }
 
     // ── 1: find the fans ───────────────────────────────────────────────────────────────
@@ -147,7 +163,7 @@ internal static class TestCommand
         Console.WriteLine("These fans will be used:");
         foreach (var group in inventory.Groups())
             Console.WriteLine($"   {group.Name}");
-        Console.WriteLine("Done. Next: 2 Auto-calibrate.");
+        Console.WriteLine("Done. Next: 2 Calibrate.");
         return true;
     }
 
@@ -157,7 +173,7 @@ internal static class TestCommand
             .Where(i => i >= 0)
             .ToHashSet();
 
-    // ── 2: auto-calibrate ──────────────────────────────────────────────────────────────
+    // ── 2: calibrate ───────────────────────────────────────────────────────────────────
 
     private static void Calibrate(FanSession session, RunsFolder runs, LineReader input)
     {
@@ -171,15 +187,16 @@ internal static class TestCommand
         }
 
         Console.WriteLine("""
-            AUTO-CALIBRATE (about 12-20 minutes)
+            CALIBRATE (15-30 minutes, while you play)
 
-            AutoFanatic puts a steady load on the CPU and the graphics card by itself (no game or
-            benchmark needed) and tries 9 combinations of fan speeds. From how the temperatures
-            react it learns what each fan cools, and works out the quietest fan speeds for every
-            load level. At the end it shows the best curves it found.
+            While you play, AutoFanatic tries 9 combinations of fan speeds and watches how the
+            temperatures follow the power: that gives real numbers for your PC, even when the
+            game's load jumps around. From that it works out the quietest fan speeds for every
+            load, from idle to heavier than your game, so the result works for everything.
 
-            Please don't use the PC while it runs. The fans will be audible; that's normal.
-            If anything gets too hot, all fans go to 100 % until it has cooled down.
+            If the PC is idle when you start, it first checks which fans can be switched off
+            (up to 2½ minutes, all fans stop). Then it asks you to start your game.
+            You'll hear the fans change. If it gets too hot, all fans go to 100 % until it's cool.
             """);
 
         string? roomText = input.Ask("Room temperature in °C? (a guess is fine; Enter = 22)", CtrlC.Reset());
@@ -192,21 +209,46 @@ internal static class TestCommand
             return;
         string profile = target.Trim() == "90" ? "90" : "80";
 
-        if (input.Ask("Close games and videos, then press Enter to start (b + Enter to go back)", CtrlC.Reset()) is null or "b")
+        string? loadChoice = input.Ask("Load: Enter = your game (recommended), b = built-in load instead (then don't use the PC)", CtrlC.Reset());
+        if (loadChoice is null)
             return;
 
+        string[] args = ["--runs", runs.Path, "--ambient", room.ToString(CultureInfo.InvariantCulture), "--profile", profile];
+        if (loadChoice.Trim() == "b")
+            args = [.. args, "--builtin-load"];
+
         Console.WriteLine();
-        CalibrateCommand.Run(session, ["--runs", runs.Path, "--ambient", room.ToString(CultureInfo.InvariantCulture), "--profile", profile], CtrlC.Reset());
+        CalibrateCommand.Run(session, args, CtrlC.Reset());
     }
 
     private static void ShowCurves(RunsFolder runs)
     {
         if (runs.Latest("calibration-*.txt") is not { } latest)
         {
-            Console.WriteLine("No calibration yet: choose 2 Auto-calibrate first.");
+            Console.WriteLine("No calibration yet: choose 2 Calibrate first.");
             return;
         }
         Console.Write(File.ReadAllText(latest.FullName));
+    }
+
+    // ── 4: use the curves ──────────────────────────────────────────────────────────────
+
+    private static void UseCurves(FanSession session, RunsFolder runs, LineReader input)
+    {
+        if (!runs.Exists("calibration.json"))
+        {
+            Console.WriteLine("No calibration yet: choose 2 Calibrate first.");
+            return;
+        }
+
+        Console.WriteLine("""
+            USE MY CURVES
+
+            AutoFanatic now runs your fans with your calibrated curves: for games and everything
+            else. Fans are off at idle where that was found safe, speed up quickly when it gets
+            warmer and slow down gently. Keep this window open (you can minimize it).
+            """);
+        RunCommand.Run(session, ["--runs", runs.Path], CtrlC.Reset(), stopRequested: () => input.TryTake(TimeSpan.Zero, out _));
     }
 
     /// <summary>Short verdict on what the tool found. False if there's nothing to control.</summary>

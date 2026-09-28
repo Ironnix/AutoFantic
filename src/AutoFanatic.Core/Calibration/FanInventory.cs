@@ -22,8 +22,15 @@ public sealed record FanHeader(
 
     public bool IsGpu => ControlId.Contains("gpu", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>True if the fan stood still at a measured speed (e.g. a GPU in 0-RPM mode).</summary>
+    /// <summary>True if the fan stood still at a measured speed (a GPU in 0-RPM mode, or a fan that stops at 0 %).</summary>
     public bool CanStop => Rpm.Any(p => p.Rpm < StoppedBelowRpm);
+
+    /// <summary>Highest measured duty cycle at which the fan stood still; null if it never did.</summary>
+    public float? HighestStopped => Rpm.Where(p => p.Rpm < StoppedBelowRpm).Select(p => (float?)p.Percent).Max();
+
+    /// <summary>The duty cycle that gives roughly this RPM (inverse of <see cref="RpmAt"/>).</summary>
+    public float PercentFor(float rpm) =>
+        Enumerable.Range(0, 101).MinBy(p => Math.Abs(RpmAt(p) - rpm));
 
     /// <summary>Lowest measured duty cycle at which the fan still turned.</summary>
     public float? LowestSpinning => Rpm.Where(p => p.Rpm >= StoppedBelowRpm).Select(p => (float?)p.Percent).Min();
@@ -73,10 +80,13 @@ public sealed record FanGroup(string Name, IReadOnlyList<FanHeader> Headers)
     public bool CanStop => Headers.All(h => h.CanStop);
 
     /// <summary>
-    /// Lowest speed the group may run at while spinning. A fan that stood still at the lowest
-    /// measured step starts somewhere above it; 40 % is the first guess, which the calibration checks.
+    /// Lowest speed the group may run at while spinning. A fan that stood still at a measured step
+    /// above 0 % (a GPU at 30 %) starts somewhere above it: 40 % is the first guess, which the
+    /// calibration checks. A fan that only stops at 0 % spins from its lowest measured speed.
     /// </summary>
-    public float MinSpinning => SpinsFrom ?? (CanStop ? 40 : Math.Max(20, Headers.Max(h => h.LowestSpinning ?? 30)));
+    public float MinSpinning => SpinsFrom ?? (Headers.Max(h => h.HighestStopped ?? 0) > 0
+        ? Math.Max(40, Headers.Max(h => h.HighestStopped ?? 0) + 10)
+        : Math.Max(20, Headers.Max(h => h.LowestSpinning ?? 30)));
 
     /// <summary>Set once the calibration has seen the fans stand still at a speed: the next level that did spin.</summary>
     public float? SpinsFrom { get; init; }
@@ -111,6 +121,15 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
 
     public static FanInventory? Load(string path) =>
         File.Exists(path) ? JsonSerializer.Deserialize<FanInventory>(File.ReadAllText(path), Json) : null;
+
+    /// <summary>A copy with the measured RPM at 0 % added, per channel (from the fans-off test).</summary>
+    public FanInventory WithRpmAtZero(IReadOnlyDictionary<int, float> rpmAtZero) =>
+        this with
+        {
+            Headers = Headers.Select(h => rpmAtZero.TryGetValue(h.Channel, out float rpm)
+                ? h with { Rpm = h.Rpm.Where(p => p.Percent > 0).Prepend(new RpmPoint(0, rpm)).ToList() }
+                : h).ToList(),
+        };
 
     /// <summary>A copy with the given channels marked as pump (or not), e.g. after the user confirmed it.</summary>
     public FanInventory WithPumps(IReadOnlySet<int> pumpChannels) =>

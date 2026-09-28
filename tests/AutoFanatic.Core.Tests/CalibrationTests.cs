@@ -157,6 +157,62 @@ public class CalibrationTests
     }
 
     [Fact]
+    public void A_fan_that_stops_at_zero_may_be_switched_off_and_still_spins_from_its_lowest_speed()
+    {
+        var inventory = RalfsPc().WithRpmAtZero(new Dictionary<int, float> { [0] = 0, [5] = 420 });
+        var groups = inventory.Groups();
+
+        var cpuFan = groups.Single(g => g.Name.StartsWith("CPU Fan"));
+        var caseFans = groups.Single(g => g.Name.StartsWith("System Fan #4"));
+        var gpu = groups.Single(g => g.IsGpu);
+
+        Assert.True(cpuFan.CanStop);
+        Assert.Equal(30, cpuFan.MinSpinning);
+        Assert.False(caseFans.CanStop); // still turns at 0 %
+        Assert.Equal(40, gpu.MinSpinning);  // stood still at 30 %: starts above that
+    }
+
+    [Fact]
+    public void Mainboard_fans_that_can_stop_are_off_at_idle_when_it_stays_cool()
+    {
+        var groups = RalfsPc().WithRpmAtZero(new Dictionary<int, float> { [0] = 0, [1] = 0, [5] = 0 }).Groups().ToList();
+        var observations = CalibrationPlan.Runs(groups).Select(speeds => new Observation(speeds, 90, 250, new Dictionary<Component, double>
+        {
+            [Component.Cpu] = 22 + 90 * (0.2 + 2 * ThermalModel.Basis(speeds[0]) + 1 * ThermalModel.Basis(speeds[1]) + 0.5 * ThermalModel.Basis(speeds[2])),
+            [Component.GpuCore] = 22 + 250 * (0.05 + 0.5 * ThermalModel.Basis(speeds[2]) + 2 * ThermalModel.Basis(speeds[3])),
+        })).ToList();
+        var optimizer = new MixOptimizer(ThermalModel.Fit(observations, 22, 4), groups, Profile.Max(80)) { StopOnlyUpTo = (45, 125) };
+
+        var idle = optimizer.Best(20, 20);
+        var load = optimizer.Best(90, 250);
+
+        Assert.All(idle.Speeds, s => Assert.Equal(0, s));
+        Assert.All(load.Speeds, s => Assert.NotEqual(0, s));
+    }
+
+    [Fact]
+    public void Everything_off_uses_the_measured_fans_off_temperatures()
+    {
+        var groups = RalfsPc().WithRpmAtZero(new Dictionary<int, float> { [0] = 0, [1] = 0, [5] = 0 }).Groups().ToList();
+        var observations = CalibrationPlan.Runs(groups).Select(speeds => new Observation(speeds, 90, 250, new Dictionary<Component, double>
+        {
+            [Component.Cpu] = 22 + 90 * (0.2 + 2 * ThermalModel.Basis(speeds[0])),
+            [Component.GpuCore] = 22 + 250 * (0.05 + 2 * ThermalModel.Basis(speeds[3])),
+        })).ToList();
+        var model = ThermalModel.Fit(observations, 22, 4);
+
+        // the fans-off test found it much warmer without fans than the model would guess
+        var measured = new Dictionary<Component, double> { [Component.Cpu] = 1.5, [Component.GpuCore] = 1.0 };
+        var optimizer = new MixOptimizer(model, groups, Profile.Max(80)) { AllOffResistance = measured };
+
+        var allOff = optimizer.Predict([0, 0, 0, 0], 20, 30);
+
+        Assert.Equal(22 + 20 * 1.5, allOff[Component.Cpu], 6);
+        Assert.Equal(22 + 30 * 1.0, allOff[Component.GpuCore], 6);
+        Assert.Equal(52, allOff[Component.GpuCore], 6);
+    }
+
+    [Fact]
     public void A_gpu_fan_above_its_stop_point_is_not_silent()
     {
         var gpu = RalfsPc().Headers.Single(h => h.Channel == 8);
