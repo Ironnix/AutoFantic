@@ -131,6 +131,18 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
                 : h).ToList(),
         };
 
+    /// <summary>A copy noting that these channels' fans stood still at these speeds (seen during a calibration).</summary>
+    public FanInventory WithStandstill(IEnumerable<(int Channel, float Percent)> standstill)
+    {
+        var stops = standstill.GroupBy(x => x.Channel).ToDictionary(g => g.Key, g => g.Max(x => x.Percent));
+        return this with
+        {
+            Headers = Headers.Select(h => stops.TryGetValue(h.Channel, out float percent)
+                ? h with { Rpm = h.Rpm.Where(p => p.Percent != percent).Append(new RpmPoint(percent, 0)).OrderBy(p => p.Percent).ToList() }
+                : h).ToList(),
+        };
+    }
+
     /// <summary>A copy with the given channels marked as pump (or not), e.g. after the user confirmed it.</summary>
     public FanInventory WithPumps(IReadOnlySet<int> pumpChannels) =>
         this with { Headers = Headers.Select(h => h with { IsPump = pumpChannels.Contains(h.Channel) }).ToList() };

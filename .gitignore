@@ -19,3 +19,6 @@ sweep*.txt
 
 # test runs on real hardware (hardware dumps, logs, sweep reports)
 runs/
+
+# a newer build waiting to replace publish\ (Start-Test.cmd swaps it in)
+publish-next/

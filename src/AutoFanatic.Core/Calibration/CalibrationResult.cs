@@ -32,6 +32,8 @@ public sealed record LoadRow(
 /// <summary>Everything a calibration produced, saved as JSON for "Use my curves".</summary>
 /// <param name="StopCpuWatts">Fans may only be off while the CPU draws at most this …</param>
 /// <param name="StopGpuWatts">… and the GPU at most this.</param>
+/// <param name="Rms">How far the model is off from the measurements, °C per temperature.</param>
+/// <param name="Sources">The calibrations the result is built from, e.g. "28.09. 22:26 Bodycam".</param>
 public sealed record CalibrationResult(
     DateTimeOffset Created,
     string Profile,
@@ -40,7 +42,9 @@ public sealed record CalibrationResult(
     IReadOnlyList<LoadRow> Table,
     IReadOnlyDictionary<Component, double[]> Model,
     double StopCpuWatts,
-    double StopGpuWatts)
+    double StopGpuWatts,
+    IReadOnlyDictionary<Component, double>? Rms = null,
+    IReadOnlyList<string>? Sources = null)
 {
     // "silent" is −∞ dB
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
@@ -51,11 +55,36 @@ public sealed record CalibrationResult(
         File.Exists(path) ? JsonSerializer.Deserialize<CalibrationResult>(File.ReadAllText(path), Json) : null;
 
     /// <summary>
+    /// The four points a BIOS fan curve (e.g. MSI Smart Fan) takes: the first three points of the
+    /// curve and the one where it reaches 100 %. A shorter curve gets extra points in its longest
+    /// stretch, on the line, because a BIOS wants four different temperatures.
+    /// </summary>
+    public static IReadOnlyList<CurvePoint> BiosPoints(IReadOnlyList<CurvePoint> curve)
+    {
+        if (curve.Count == 0)
+            return [];
+        if (curve.Count == 1)
+            return [.. new[] { 15, 10, 5 }.Select(d => curve[0] with { Temperature = curve[0].Temperature - d }), curve[0]];
+
+        var points = curve.Take(Math.Min(3, curve.Count - 1)).Append(curve[^1]).ToList();
+        while (points.Count < 4)
+        {
+            int widest = Enumerable.Range(1, points.Count - 1).MaxBy(i => points[i].Temperature - points[i - 1].Temperature);
+            var (a, b) = (points[widest - 1], points[widest]);
+            double t = Math.Round((a.Temperature + b.Temperature) / 2);
+            points.Insert(widest, new CurvePoint(t, Math.Round(a.Percent + (b.Percent - a.Percent) * (t - a.Temperature) / (b.Temperature - a.Temperature))));
+        }
+        return points;
+    }
+
+    /// <summary>
     /// A group's curve from the table: at each load level where it spins, the temperature it follows
     /// and the speed chosen there. Sorted by temperature and kept rising, so it can go straight into
-    /// a BIOS or MSI Afterburner curve. Levels where it is off are left out: a fan that stands still
-    /// leaves its part warmer than a light load with the fan on, which a temperature curve can't
-    /// express; <see cref="CalibratedGroup.OffAt"/> carries that instead.
+    /// a BIOS or MSI Afterburner curve. Every level stays a point, including flat stretches (30 % at
+    /// 54 °C and still 30 % at 67 °C), so the curve doesn't ramp up earlier than planned. Levels
+    /// where it is off are left out: a fan that stands still leaves its part warmer than a light
+    /// load with the fan on, which a temperature curve can't express; <see cref="CalibratedGroup.OffAt"/>
+    /// carries that instead.
     /// </summary>
     /// <param name="fullSpeedAt">From this temperature on the fan runs at 100 %: whatever task gets hotter
     /// than anything the calibration saw is still covered.</param>
@@ -74,7 +103,7 @@ public sealed record CalibrationResult(
             double percent = curve.Count == 0 ? point.Percent : Math.Max(point.Percent, curve[^1].Percent);
             if (curve.Count > 0 && Math.Abs(curve[^1].Temperature - point.Temperature) < 1)
                 curve[^1] = curve[^1] with { Percent = percent };
-            else if (curve.Count == 0 || percent != curve[^1].Percent || point == points[^1])
+            else
                 curve.Add(new CurvePoint(point.Temperature, percent));
         }
 

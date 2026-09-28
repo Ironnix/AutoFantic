@@ -29,10 +29,7 @@ internal static class RunCommand
             .ToList();
 
         // lowest speed each group turns at, from what "Find my fans" and the fans-off test measured
-        var known = inventory.Groups();
-        var minSpinning = calibration.Groups
-            .Select(g => (double)(known.FirstOrDefault(k => k.Headers.Select(h => h.ControlId).SequenceEqual(g.ControlIds))?.MinSpinning ?? 30))
-            .ToList();
+        var minSpinning = FanControlLoop.MinSpinning(calibration, inventory);
 
         var first = session.Read();
         var keys = KeySensors.Detect(first);

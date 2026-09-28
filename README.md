@@ -22,7 +22,7 @@
 |----|----|----|
 | 0 | Test tool: read sensors, drive fan headers, find fans, knee sweep, simulated PC | ✅ tested on the real PC (sensors, fan control, discover) |
 | 0.5 | Calibration while gaming (power-following fit), fans-off test, quietest mix per load level, curves, "Use my curves" controller | ✅ code ready, first real run pending |
-| 1 | Background service, logging, load detection | planned |
+| 1 | Background app: window (overview, curve editor, settings) + tray icon, start with Windows, sleep handling; logging and a watchdog still to do | 🟡 ready, first real run pending |
 | 2 | Setup wizard: find fans, what they cool, pump detection | planned |
 | 3 | Learning: experiments during steady load, thermal model | planned |
 | 4 | Profiles (Max 80 / Max 90 / Max Cooling) and live control | planned |
@@ -76,12 +76,15 @@ Add `--simulate` to any command to run it against a built-in simulated PC: no ad
 | 2 Calibrate | while you play, 15–30 min | if the PC is idle at the start, first a **fans-off test** (which fans stop at 0 %, how warm it gets without them). Then, while your game runs, 9 fan combinations (a Taguchi L9 plan, so every group's effect can be separated); for each it fits how the temperatures **follow the power second by second**, which gives °C per watt even with a jumpy game load. From that: the **quietest fan speeds for every load level**, from idle to 30 % beyond the heaviest load seen, and a curve per fan that ends at 100 % just above the target. `b` uses the built-in CPU + GPU load instead of a game |
 | 3 Show my best curves | any time | what each fan cools, the table idle → beyond, a curve per fan |
 | 4 Use my curves | any time | AutoFanatic runs the fans with those curves, for games and everything else, until Enter: smoothed temperatures, +4 %/s up, −1 %/s down, fans **off** at low load while CPU and GPU stay ≤ 55 °C (on again above 60 °C), a short kick when a stopped fan starts |
+| 5 Run in the background | day to day | starts **`AutoFanatic.exe`**: the **AutoFanatic window** (Windows 11 look: *Overview* with status, Pause, temperatures, every fan's live speed and the Max 80 / Max 90 switch; *Fan curves* where you drag a fan's curve points, double-click to add, right-click to remove, switch stopping at idle on or off and reset to the recommended curve; *Settings*) and a round icon next to the clock (green = in control, grey = paused, orange = cooling down after a safety stop, red = sensor problem). Hover for temperatures; right-click for every fan's speed, *Show my curves*, *Pause* (BIOS takes over), *Start with Windows* (a Task Scheduler task with highest privileges, so no admin prompt at logon) and *Exit*. Before sleep the BIOS gets the fans, after waking AutoFanatic takes them back. While it runs, the test menu won't drive any fan |
 
 `9 More` has the developer tests (record a gaming session, measure one fan group, crash test).
 
+**Every calibration adds to the last.** Measurements are kept in `runs\measurements.json` and the result is always worked out from all of them: a GPU-heavy game teaches the GPU side, a CPU render (e.g. Cinebench, started when the calibration asks for load) the CPU side. Each run counts by the power of the part it heats, so the CPU is learned from the runs where the CPU really worked. Menu `3` (or `autofanatic-spike recalculate --profile 90`) works the result out again, e.g. for another limit, without measuring. The result is also a page, `runs\calibration.html`: what every fan does per load level (including when it's off), each fan's curve, and the values for a BIOS (4 points, CPU temperature) and for MSI Afterburner.
+
 Everything is saved in `runs\` (git-ignored: it describes your machine); `--simulate` runs write into `runs\sim\`. Before starting, turn **off fan control in other fan tools** (Argus Monitor, Fan Control, Armoury Crate, iCUE, MSI Afterburner's fan curve); monitoring may stay.
 
-"Use my curves" runs in its window for now; a background service that starts with Windows (and a watchdog) is the next step.
+Curves you set by hand are kept in `runs\curves.json` and survive new calibrations; the safety limits always apply to them too. Still to come: calibrating from the window, and a watchdog that restores the BIOS fan settings after a crash.
 
 ## Safety
 

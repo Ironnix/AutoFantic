@@ -55,6 +55,17 @@ public sealed class CurveController
     /// <summary>Smoothed temperatures the controller is working with.</summary>
     public IReadOnlyDictionary<Component, double> Smoothed => _smoothed;
 
+    /// <summary>After a pause (BIOS in control): start again right at the curve, as on the first step.</summary>
+    public void Restart()
+    {
+        foreach (var s in _state)
+        {
+            s.Percent = double.NaN;
+            s.Off = false;
+            s.Since = DateTimeOffset.MinValue;
+        }
+    }
+
     /// <summary>After the safety system ran every fan at 100 %: carry on from there.</summary>
     public void Reset()
     {

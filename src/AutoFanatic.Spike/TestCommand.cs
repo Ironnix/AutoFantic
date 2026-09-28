@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using AutoFanatic.Core;
 using AutoFanatic.Core.Analysis;
 using AutoFanatic.Core.Calibration;
 using AutoFanatic.Core.Hardware;
@@ -34,6 +35,15 @@ internal static class TestCommand
             PrintMenu(runs);
             string? choice = input.Ask("Type a number and press Enter", CtrlC.Reset());
             Console.WriteLine();
+            // only one program may drive the fans
+            if (choice?.Trim() is "1" or "2" or "4" or "5" or "9" && !simulated && DataFolder.BackgroundRunning())
+            {
+                Console.WriteLine("AutoFanatic is running in the background (icon next to the clock) and controls the fans.");
+                Console.WriteLine("Right-click the icon → Exit first, then choose this again.");
+                Console.WriteLine();
+                continue;
+            }
+
             switch (choice?.Trim())
             {
                 case "1":
@@ -43,10 +53,14 @@ internal static class TestCommand
                     Calibrate(session, runs, input);
                     break;
                 case "3":
-                    ShowCurves(runs);
+                    ShowCurves(runs, input);
                     break;
                 case "4":
                     UseCurves(session, runs, input);
+                    break;
+                case "5":
+                    if (StartBackground(runs, simulated))
+                        return 0;
                     break;
                 case "9":
                     More(session, runs, input, simulated);
@@ -75,7 +89,8 @@ internal static class TestCommand
         Console.WriteLine($"  1  Find my fans            once, about 2 min, PC idle       {fans}");
         Console.WriteLine($"  2  Calibrate               15-30 min, while you play        {(latest is null ? "" : $"✓ {latest.LastWriteTime:dd.MM. HH:mm}")}");
         Console.WriteLine("  3  Show my best curves");
-        Console.WriteLine("  4  Use my curves           AutoFanatic runs your fans until you stop it");
+        Console.WriteLine("  4  Use my curves           AutoFanatic runs your fans in this window");
+        Console.WriteLine("  5  Run in the background   the AutoFanatic window + icon, this closes");
         Console.WriteLine();
         Console.WriteLine("  9  More (developer tests)");
         Console.WriteLine("  0  Exit");
@@ -218,17 +233,72 @@ internal static class TestCommand
             args = [.. args, "--builtin-load"];
 
         Console.WriteLine();
-        CalibrateCommand.Run(session, args, CtrlC.Reset());
+        if (CalibrateCommand.Run(session, args, CtrlC.Reset()) == 0)
+            OpenPage(runs);
     }
 
-    private static void ShowCurves(RunsFolder runs)
+    private static void ShowCurves(RunsFolder runs, LineReader input)
     {
         if (runs.Latest("calibration-*.txt") is not { } latest)
         {
             Console.WriteLine("No calibration yet: choose 2 Calibrate first.");
             return;
         }
-        Console.Write(File.ReadAllText(latest.FullName));
+
+        string? limit = input.Ask("Enter = show them, or type 80 / 90 to work them out again for that limit (no new measuring)", CtrlC.Reset());
+        if (limit?.Trim() is "80" or "90")
+            CalibrateCommand.RecalculateCommand(["--runs", runs.Path, "--profile", limit.Trim()]);
+        else
+            Console.Write(File.ReadAllText(latest.FullName));
+
+        OpenPage(runs);
+    }
+
+    /// <summary>
+    /// Opens runs\calibration.html in the browser. Through Explorer, so the browser starts as the
+    /// normal user rather than with this window's admin rights.
+    /// </summary>
+    private static void OpenPage(RunsFolder runs)
+    {
+        string page = runs.File("calibration.html");
+        if (!File.Exists(page) || Console.IsInputRedirected)
+            return;
+        try
+        {
+            using var _ = System.Diagnostics.Process.Start("explorer.exe", $"\"{page}\"");
+            Console.WriteLine($"The page opens in your browser: {page}");
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Console.WriteLine($"Open this page in your browser: {page}");
+        }
+    }
+
+    // ── 5: background ──────────────────────────────────────────────────────────────────
+
+    /// <summary>Starts AutoFanatic.exe (the icon next to the clock) and ends this menu, so only one program drives the fans.</summary>
+    private static bool StartBackground(RunsFolder runs, bool simulated)
+    {
+        if (!runs.Exists("calibration.json"))
+        {
+            Console.WriteLine("No calibration yet: choose 2 Calibrate first.");
+            return false;
+        }
+
+        string exe = Path.Combine(AppContext.BaseDirectory, "AutoFanatic.exe");
+        if (!File.Exists(exe))
+        {
+            Console.WriteLine($"AutoFanatic.exe is missing next to this program ({AppContext.BaseDirectory}): ask Claude to build it.");
+            return false;
+        }
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true, Arguments = simulated ? "--simulate --open" : "--open" })?.Dispose();
+        Console.WriteLine("""
+            AutoFanatic now runs in the background and its window opens. Later you'll find it as
+            the round icon next to the clock (maybe under the little arrow): double-click opens
+            the window again, right-click shows the fans and pause / exit. This window closes now.
+            """);
+        return true;
     }
 
     // ── 4: use the curves ──────────────────────────────────────────────────────────────
@@ -643,18 +713,9 @@ internal sealed class RunsFolder
     /// runs\ in the repo (found by walking up from the exe to AutoFanatic.sln), else runs\ next to
     /// the exe. A simulated PC writes into runs\sim\, so its made-up data never mixes with real results.
     /// </summary>
-    public static string Default(FanSession session) =>
-        session is Core.Simulation.SimulatedPc ? System.IO.Path.Combine(Default(), "sim") : Default();
+    public static string Default(FanSession session) => DataFolder.Default(session is Core.Simulation.SimulatedPc);
 
-    public static string Default()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            if (System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "AutoFanatic.sln")))
-                return System.IO.Path.Combine(dir.FullName, "runs");
-        }
-        return System.IO.Path.Combine(AppContext.BaseDirectory, "runs");
-    }
+    public static string Default() => DataFolder.Default();
 
     public string File(string name) => System.IO.Path.Combine(Path, name);
 

@@ -11,7 +11,15 @@ public enum Component
 
 /// <summary>One calibration run: the fan speeds that were set and where each temperature settled.</summary>
 /// <param name="Speeds">Effective speed per fan group in % (0 for a fan that stood still).</param>
-public sealed record Observation(IReadOnlyList<double> Speeds, double CpuPower, double GpuPower, IReadOnlyDictionary<Component, double> Final);
+/// <param name="Ambient">Room temperature during this run; null = the model's.</param>
+/// <param name="Weight">How much this run counts (1 = a real measurement).</param>
+public sealed record Observation(
+    IReadOnlyList<double> Speeds,
+    double CpuPower,
+    double GpuPower,
+    IReadOnlyDictionary<Component, double> Final,
+    double? Ambient = null,
+    double Weight = 1);
 
 /// <summary>
 /// "How it learns", compressed: for each temperature,
@@ -58,7 +66,12 @@ public sealed class ThermalModel
         return Ambient + (IsCpu(component) ? cpuPower : gpuPower) * r;
     }
 
-    /// <summary>Fits every component that has a value in enough observations.</summary>
+    /// <summary>
+    /// Fits every component that has a value in enough observations. Runs from different
+    /// calibrations (a GPU-heavy game, a CPU render …) fit together: each run is weighted by the
+    /// power of the part that heats that temperature, so the CPU is learned mostly from the runs
+    /// where the CPU really worked, and the GPU from those where the GPU did.
+    /// </summary>
     public static ThermalModel Fit(IReadOnlyList<Observation> observations, double ambient, int groups)
     {
         var coefficients = new Dictionary<Component, double[]>();
@@ -74,20 +87,24 @@ public sealed class ThermalModel
             if (rows.Count < 2)
                 continue;
 
-            // y = (T − T_room) / P  =  r0 + Σ k_g · basis(speed_g)
+            // y = (T − T_room) / P  =  r0 + Σ k_g · basis(speed_g), fitted in °C: rows scaled by P·√weight
             var x = rows.Select(r => new[] { 1.0 }.Concat(r.o.Speeds.Select(Basis)).ToArray()).ToList();
-            var y = rows.Select(r => (r.o.Final[component] - ambient) / r.Power).ToList();
-            var beta = NonNegativeLeastSquares(x, y);
+            var y = rows.Select(r => (r.o.Final[component] - (r.o.Ambient ?? ambient)) / r.Power).ToList();
+            var scale = rows.Select(r => r.Power * Math.Sqrt(r.o.Weight)).ToList();
+            var beta = NonNegativeLeastSquares(
+                x.Select((row, i) => row.Select(v => v * scale[i]).ToArray()).ToList(),
+                y.Select((v, i) => v * scale[i]).ToList());
 
-            double sse = 0;
+            double sse = 0, weights = 0;
             for (int i = 0; i < rows.Count; i++)
             {
-                double predicted = ambient + rows[i].Power * x[i].Zip(beta, (a, b) => a * b).Sum();
-                sse += Math.Pow(predicted - rows[i].o.Final[component], 2);
+                double predicted = (rows[i].o.Ambient ?? ambient) + rows[i].Power * x[i].Zip(beta, (a, b) => a * b).Sum();
+                sse += rows[i].o.Weight * Math.Pow(predicted - rows[i].o.Final[component], 2);
+                weights += rows[i].o.Weight;
             }
 
             coefficients[component] = beta;
-            rms[component] = Math.Sqrt(sse / rows.Count);
+            rms[component] = Math.Sqrt(sse / weights);
         }
         return new ThermalModel(ambient, groups, coefficients, rms);
     }

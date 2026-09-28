@@ -11,7 +11,7 @@ namespace AutoFanatic.Spike;
 /// setting is worth (°C per watt), fit the thermal model, and compute the quietest fan speeds for
 /// every load level, from idle to beyond what was measured. The result applies to every task.
 /// </summary>
-internal static class CalibrateCommand
+internal static partial class CalibrateCommand
 {
     private static readonly Component[] Modelled = [Component.Cpu, Component.GpuCore, Component.GpuHotspot, Component.GpuMemory];
 
@@ -133,8 +133,8 @@ internal static class CalibrateCommand
             // 3. the runs
             for (int r = 0; r < plan.Count && !aborted; r++)
             {
-                var speeds = plan[r];
-                bool warmup = r == 0;
+                var speeds = plan[r].ToArray();
+                bool warmup = r == 0, raisedAfterHeat = false;
                 for (int attempt = 0; ; attempt++)
                 {
                     for (int g = 0; g < groups.Count; g++)
@@ -145,10 +145,17 @@ internal static class CalibrateCommand
                     var outcome = MeasureRun(session, guard, sensorOf, keys, groups, ambient, hold, warmup);
                     if (outcome.Stop is { } stop)
                     {
+                        if (stop == RunStop.TooHot && !raisedAfterHeat && RaiseSlowest(groups, speeds))
+                        {
+                            // a setting that is too hot still teaches something a bit faster
+                            raisedAfterHeat = true;
+                            Console.WriteLine($"   too hot with these speeds: trying again a bit faster ({Describe(groups, speeds)}).");
+                            continue;
+                        }
                         if (stop == RunStop.TooHot)
                         {
                             skipped.Add(Describe(groups, speeds));
-                            Console.WriteLine("   too hot with these speeds: skipped, carrying on with the next run.");
+                            Console.WriteLine("   still too hot: skipped, carrying on with the next run.");
                         }
                         else
                         {
@@ -204,57 +211,52 @@ internal static class CalibrateCommand
         Console.WriteLine(builtIn ? "Load stopped, all fans back to BIOS control." : "All fans back to BIOS control.");
         Console.WriteLine();
 
-        if (observations.Count < Math.Min(plan.Count, 3))
+        if (observations.Count == 0)
         {
-            Console.WriteLine($"Only {observations.Count} of {plan.Count} runs finished: not enough to work out curves.");
+            Console.WriteLine("No run finished: nothing to add.");
             return aborted ? 3 : 1;
         }
 
-        // a group that stood still at a speed needs more than that to spin
-        for (int g = 0; g < groups.Count; g++)
+        // a fan that stood still at a speed needs more than that to spin: remember it in fans.json
+        var standstill = groups.SelectMany((g, i) => g.Headers.Select(h => (h.Channel, Percent: (float)stoppedAt[i])))
+            .Where(x => x.Percent > 0)
+            .ToList();
+        if (standstill.Count > 0)
         {
-            if (stoppedAt[g] > 0)
-                groups[g] = groups[g] with { SpinsFrom = (float)Math.Min(100, stoppedAt[g] + 10) };
+            inventory = inventory.WithStandstill(standstill);
+            inventory.Save(inventoryPath);
         }
 
-        var model = ThermalModel.Fit(observations, ambient, groups.Count);
-
-        // load levels from what was measured: idle, up to the highest load seen, and beyond it
-        double topCpu = Percentile(loaded.Select(s => s.CpuPower), 0.95), topGpu = Percentile(loaded.Select(s => s.GpuPower), 0.95);
-        double lowCpu = idleCpu ?? Percentile(loaded.Select(s => s.CpuPower), 0.05);
-        double lowGpu = idleGpu ?? Percentile(loaded.Select(s => s.GpuPower), 0.05);
-        string[] labels = ["idle", "light", "medium", "high", "beyond"];
-        double[] shares = [0, 0.33, 0.66, 1, 1.3];
-        var loads = shares.Select(f => (lowCpu + (topCpu - lowCpu) * f, lowGpu + (topGpu - lowGpu) * f)).ToList();
-
-        // fans may be off at idle-like power only (and while it's cool, see MixOptimizer)
-        double stopCpu = Math.Max(lowCpu * 1.25, topCpu / 2), stopGpu = Math.Max(lowGpu * 1.25, topGpu / 2);
-        var optimizer = new MixOptimizer(model, groups, profile)
-        {
-            StopOnlyUpTo = (stopCpu, stopGpu),
-            AllOffResistance = fansOff?.Resistance(ambient),
-        };
-        var table = optimizer.Table(loads)
-            .Select((m, i) => new LoadRow(labels[i], loads[i].Item1, loads[i].Item2, m.Speeds, m.Temperatures, m.Noise, m.MeetsTarget))
+        // add this calibration's runs to everything measured so far, then work it all out again
+        var now = DateTimeOffset.Now;
+        var groupKeys = groups.Select(MeasurementStore.Key).ToList();
+        var newRuns = observations
+            .Select(o => new StoredRun(now, ambient, groupKeys.Zip(o.Speeds).ToDictionary(p => p.First, p => p.Second), o.CpuPower, o.GpuPower, o.Final))
             .ToList();
+        string loadName = builtIn ? $"built-in load ({loadDescription})" : MostlyRunning(loaded) ?? "your own load";
+        double topCpu = Percentile(loaded.Select(s => s.CpuPower), 0.95), topGpu = Percentile(loaded.Select(s => s.GpuPower), 0.95);
+        var store = LoadStore(runs, groups)
+            .Add(new StoredCalibration(now, loadName, ambient, topCpu, topGpu, idleCpu, idleGpu, newRuns.Count), newRuns);
+        store.Save(runs.File(StoreFile));
+        Console.WriteLine($"{newRuns.Count} runs added to your measurements ({store.Calibrations.Count} calibrations so far).");
+        Console.WriteLine();
 
-        var calibrated = groups.Select((g, i) => Calibrate(g, i, model, table, topCpu, topGpu, profile)).ToList();
-        var result = new CalibrationResult(
-            DateTimeOffset.Now, profile.Name, ambient, calibrated, table,
-            model.Components.ToDictionary(c => c, c => model.Coefficients(c).ToArray()),
-            stopCpu, stopGpu);
+        return Recalculate(runs, inventory, store, profile, ambient, fansOff, fansOffFresh: idleNow, skipped);
+    }
 
-        if (!builtIn)
-            loadDescription = MostlyRunning(loaded) is { } program ? $"your own load (mostly {program})" : "your own load";
-
-        string stamp = $"{DateTime.Now:yyyyMMdd-HHmm}";
-        string report = Report(result, groups, model, observations.Count, skipped, loadDescription, topCpu, topGpu, stamp, fansOff, idleNow);
-        Console.Write(report);
-
-        runs.Write($"calibration-{stamp}.txt", report);
-        result.Save(runs.File("calibration.json"));
-        Console.WriteLine($"Saved: {runs.File($"calibration-{stamp}.txt")} (and calibration.json)");
-        return 0;
+    /// <summary>After a too-hot run: the groups at their lowest speed go 20 % faster. False if there is none.</summary>
+    private static bool RaiseSlowest(List<FanGroup> groups, double[] speeds)
+    {
+        bool raised = false;
+        for (int g = 0; g < groups.Count; g++)
+        {
+            if (speeds[g] <= CalibrationPlan.Levels(groups[g])[2] && speeds[g] < 100)
+            {
+                speeds[g] = Math.Min(100, speeds[g] + 20);
+                raised = true;
+            }
+        }
+        return raised;
     }
 
     private static FanChannel Channel(FanSession session, FanHeader header) =>
@@ -468,29 +470,6 @@ internal static class CalibrateCommand
         return fits;
     }
 
-    private static CalibratedGroup Calibrate(FanGroup group, int index, ThermalModel model, List<LoadRow> table, double cpuPower, double gpuPower, Profile profile)
-    {
-        double low = CalibrationPlan.Levels(group)[2];
-        double Effect(Component c, double power) =>
-            model.Components.Contains(c) ? power * model.Coefficients(c)[index + 1] * (ThermalModel.Basis(low) - ThermalModel.Basis(100)) : 0;
-
-        double cpu = Effect(Component.Cpu, cpuPower), gpu = Effect(Component.GpuCore, gpuPower);
-        var follows = group.IsGpu || gpu > cpu ? Component.GpuCore : Component.Cpu;
-
-        // just above the target everything runs flat out: covers any task hotter than the calibration
-        var limits = new SafetyLimits();
-        double safety = follows == Component.Cpu ? limits.CpuMax : limits.GpuCoreMax;
-        double fullSpeedAt = Math.Min(profile.Target(follows) + 2, safety - 3);
-
-        return new CalibratedGroup(
-            group.Name,
-            group.Headers.Select(h => h.Channel).ToList(),
-            group.Headers.Select(h => h.ControlId).ToList(),
-            follows, cpu, gpu,
-            CalibrationResult.CurveFor(table, index, follows, fullSpeedAt),
-            table.Where(r => r.Speeds[index] == 0).Select(r => r.Label).ToList());
-    }
-
     private static double Percentile(IEnumerable<double> values, double share)
     {
         var sorted = values.Order().ToList();
@@ -499,81 +478,6 @@ internal static class CalibrateCommand
 
     private static string? MostlyRunning(List<Sample> samples) =>
         samples.Where(s => s.Foreground is not null).GroupBy(s => s.Foreground).MaxBy(g => g.Count())?.Key;
-
-    private static string Report(CalibrationResult result, List<FanGroup> groups, ThermalModel model, int runsUsed, List<string> skipped,
-        string load, double topCpu, double topGpu, string stamp, FansOffResult? fansOff, bool fansOffFresh)
-    {
-        var text = new StringBuilder();
-        text.AppendLine($"AutoFanatic calibration · {stamp} · room {result.Ambient:0} °C · {result.Profile}");
-        text.AppendLine($"Load: {load}, up to CPU {topCpu:0} W, GPU {topGpu:0} W");
-        text.AppendLine();
-
-        text.AppendLine("What each fan cools (from 100 % to its lowest speed, at that load)");
-        foreach (var g in result.Groups)
-            text.AppendLine($"   {g.Name,-30} CPU {Signed(g.CpuEffect)}   GPU {Signed(g.GpuEffect)}   {Role(g)}");
-        string fit = string.Join(", ", model.Rms.Select(kv => $"{Name(kv.Key)} ±{kv.Value:0.0} °C"));
-        text.AppendLine($"   model fits the measurements within {fit}; {runsUsed} runs used" + (skipped.Count > 0 ? $", {skipped.Count} too hot and skipped" : ""));
-        text.AppendLine();
-
-        text.AppendLine("Fans off (0-RPM)");
-        if (fansOff is null)
-        {
-            text.AppendLine("   no fans-off test yet: start a calibration once while the PC is idle, then fans can be switched off at idle");
-        }
-        else
-        {
-            if (!fansOffFresh)
-                text.AppendLine($"   (from the fans-off test of {fansOff.Created:dd.MM. HH:mm})");
-            foreach (var line in fansOff.Summary)
-                text.AppendLine($"   {line}");
-        }
-        text.AppendLine($"   a fan is only off while CPU ≤ {result.StopCpuWatts:0} W, GPU ≤ {result.StopGpuWatts:0} W and both stay ≤ {MixOptimizer.StopOnlyBelow:0} °C");
-        text.AppendLine();
-
-        text.AppendLine($"Quietest fan speeds for {result.Profile}, per load level");
-        var header = new StringBuilder($"   {"load",-8} {"CPU W",5} {"GPU W",5} ");
-        foreach (var g in groups)
-            header.Append($" {Short(g),8}");
-        header.Append("   CPU °C  GPU °C  hotspot  noise");
-        text.AppendLine(header.ToString());
-
-        double loudest = NoiseModel.Total(groups, groups.Select(_ => 100.0).ToList());
-        foreach (var row in result.Table)
-        {
-            var line = new StringBuilder($"   {row.Label,-8} {row.CpuPower,5:0} {row.GpuPower,5:0} ");
-            foreach (var s in row.Speeds)
-                line.Append($" {(s == 0 ? "off" : $"{s:0} %"),8}");
-            line.Append($"   {T(row.Temperatures, Component.Cpu),6}  {T(row.Temperatures, Component.GpuCore),6}  {T(row.Temperatures, Component.GpuHotspot),7}  {Noise(row.Noise - loudest)}");
-            if (!row.MeetsTarget)
-                line.Append("  ← target not reachable, coolest mix");
-            text.AppendLine(line.ToString());
-        }
-        text.AppendLine("   \"beyond\" is 30 % more than the highest load measured, e.g. a render; the model extrapolates there");
-        text.AppendLine("   noise: dB compared with all fans at 100 % (−10 dB sounds about half as loud)");
-        text.AppendLine();
-
-        text.AppendLine("Fan curves (fan % by temperature): what \"Use my curves\" runs, also usable in the BIOS or MSI Afterburner");
-        foreach (var g in result.Groups)
-        {
-            string points = string.Join(",  ", g.Curve.Select(p => $"{p.Temperature:0} °C → {p.Percent:0} %"));
-            string off = g.OffAt.Count > 0 ? $"off at {string.Join(" + ", g.OffAt)} load, otherwise " : "";
-            text.AppendLine($"   {g.Name,-30} {off}follows {Name(g.Follows)}:  {points}");
-        }
-        text.AppendLine();
-
-        var high = result.Table.First(r => r.Label == "high");
-        text.AppendLine(high.MeetsTarget
-            ? $"{result.Profile} holds at the highest load measured: CPU {T(high.Temperatures, Component.Cpu)}, GPU {T(high.Temperatures, Component.GpuCore)}."
-            : $"{result.Profile} is not reachable at the highest load measured; the coolest mix reaches CPU {T(high.Temperatures, Component.Cpu)}, GPU {T(high.Temperatures, Component.GpuCore)}.");
-        text.AppendLine();
-        return text.ToString();
-    }
-
-    private static string Role(CalibratedGroup g) =>
-        g.CpuEffect < 1 && g.GpuEffect < 1 ? "barely any effect"
-        : g.CpuEffect >= 2 * g.GpuEffect ? "cools the CPU"
-        : g.GpuEffect >= 2 * g.CpuEffect ? "cools the GPU"
-        : "case airflow, helps both";
 
     private static string Describe(List<FanGroup> groups, IReadOnlyList<double> speeds) =>
         string.Join(" · ", groups.Select((g, i) => $"{Short(g)} {speeds[i]:0} %"));

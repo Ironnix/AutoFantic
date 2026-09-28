@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Principal;
+using AutoFanatic.Core;
 using AutoFanatic.Core.Hardware;
 using AutoFanatic.Core.Simulation;
 using AutoFanatic.Spike;
@@ -26,6 +27,20 @@ if (args[0] == "analyze")
     try
     {
         return AnalyzeCommand.Run(args[1..]);
+    }
+    catch (Exception ex) when (ex is UsageException or FormatException or IOException)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 2;
+    }
+}
+
+// recalculate works from the stored measurements only: no hardware, no admin rights
+if (args[0] == "recalculate")
+{
+    try
+    {
+        return CalibrateCommand.RecalculateCommand(args[1..]);
     }
     catch (Exception ex) when (ex is UsageException or FormatException or IOException)
     {
@@ -76,6 +91,14 @@ if (simSchedule is null)
 
 // the test menu runs in its own window (Start-Test.cmd): keep it open when something goes wrong
 bool pauseOnError = args[0] == "test" && !Console.IsInputRedirected;
+
+// only one program may drive the fans: not while AutoFanatic runs in the background
+if (!simulate && args[0] is "set" or "discover" or "sweep" or "calibrate" or "run" && DataFolder.BackgroundRunning())
+{
+    Console.Error.WriteLine("AutoFanatic is running in the background (icon next to the clock) and controls the fans.");
+    Console.Error.WriteLine("Right-click the icon → Exit first, then start this again.");
+    return 2;
+}
 
 if (!simulate && !IsAdministrator())
 {

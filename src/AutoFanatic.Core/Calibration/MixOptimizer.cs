@@ -31,8 +31,16 @@ public static class NoiseModel
 /// <summary>A temperature target: Max 80 = CPU and GPU core at most 80 °C; hotspot and memory keep fixed limits.</summary>
 public sealed record Profile(string Name, double Cpu, double GpuCore, double GpuHotspot = 95, double GpuMemory = 95)
 {
-    public static Profile Max(double limit) =>
-        new($"Max {limit:0}", Math.Min(limit, 90), Math.Min(limit, 85));
+    /// <summary>
+    /// "Max 80" / "Max 90". A target never sits right on a safety limit (CPU 90, GPU core 85):
+    /// it stays 3 °C below, or every load spike would trip the safety stop.
+    /// </summary>
+    public static Profile Max(double limit)
+    {
+        var safety = new Analysis.SafetyLimits();
+        return new($"Max {limit:0}", Math.Min(limit, safety.CpuMax - 3), Math.Min(limit, safety.GpuCoreMax - 3),
+            safety.GpuHotspotMax - 5, safety.GpuMemoryMax - 5);
+    }
 
     public double Target(Component component) => component switch
     {
@@ -110,7 +118,7 @@ public sealed class MixOptimizer(ThermalModel model, IReadOnlyList<FanGroup> gro
                 var temps = Predict(speeds, cpuPower, gpuPower);
                 if (speeds.Any(s => s == 0) && temps.Any(kv => kv.Key is Component.Cpu or Component.GpuCore && kv.Value > StopOnlyBelow))
                     return;
-                double excess = temps.Max(kv => kv.Value - (profile.Target(kv.Key) - Margin));
+                double excess = temps.Max(kv => kv.Value - (profile.Target(kv.Key) - MarginFor(kv.Key)));
                 double noise = NoiseModel.Total(groups, speeds);
                 if (excess <= 0)
                 {
@@ -137,6 +145,10 @@ public sealed class MixOptimizer(ThermalModel model, IReadOnlyList<FanGroup> gro
         var fallback = coolest!.Value.Speeds;
         return new Mix(fallback, Predict(fallback, cpuPower, gpuPower), NoiseModel.Total(groups, fallback), false);
     }
+
+    /// <summary>Headroom below a target: at least <see cref="Margin"/>, more where the model fits worse (up to 6 °C).</summary>
+    public double MarginFor(Component component) =>
+        Math.Clamp(model.Rms.GetValueOrDefault(component), Margin, 6);
 
     public Dictionary<Component, double> Predict(IReadOnlyList<double> speeds, double cpuPower, double gpuPower)
     {
