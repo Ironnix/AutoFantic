@@ -4,6 +4,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <Product>AutoFanatic</Product>
+    <Product>AutoFantic</Product>
   </PropertyGroup>
 </Project>
