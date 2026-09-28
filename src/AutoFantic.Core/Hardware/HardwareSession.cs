@@ -10,6 +10,7 @@ public sealed class HardwareSession : FanSession
 {
     private readonly Computer _computer;
     private readonly List<FanChannel> _channels;
+    private readonly Dictionary<ISensor, (string Id, string Hardware, string HardwareType, SensorKind Kind)> _names = [];
 
     public HardwareSession()
     {
@@ -34,15 +35,14 @@ public sealed class HardwareSession : FanSession
     protected override Snapshot ReadCore()
     {
         Update();
-        var readings = AllSensors()
-            .Select(s => new SensorReading(
-                s.Identifier.ToString(),
-                s.Hardware.Name,
-                s.Hardware.HardwareType.ToString(),
-                ToKind(s.SensorType),
-                s.Name,
-                s.Value))
-            .ToList();
+        var readings = new List<SensorReading>(_names.Count);
+        foreach (var s in AllSensors())
+        {
+            // a sensor's id and names never change: made once, not every second (less garbage)
+            if (!_names.TryGetValue(s, out var n))
+                _names[s] = n = (s.Identifier.ToString(), s.Hardware.Name, s.Hardware.HardwareType.ToString(), ToKind(s.SensorType));
+            readings.Add(new SensorReading(n.Id, n.Hardware, n.HardwareType, n.Kind, s.Name, s.Value));
+        }
         return new Snapshot(DateTimeOffset.Now, readings);
     }
 

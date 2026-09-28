@@ -87,7 +87,11 @@ internal sealed class TrayIcon : IDisposable
         if (_window is null)
         {
             _window = new MainWindow(_app);
-            _window.Closed += (_, _) => _window = null;
+            _window.Closed += (_, _) =>
+            {
+                _window = null;
+                MemoryUpkeep.ReleaseSoon();
+            };
         }
         _window.ShowPage(page);
         _window.Show();

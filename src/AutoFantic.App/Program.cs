@@ -16,7 +16,7 @@ namespace AutoFantic.App;
 /// itself, or has them when started by "Start with Windows" (Task Scheduler, highest privileges).
 ///
 /// Options for checking a build without touching the screen (with --simulate):
-///   --selftest                      start everything without an icon, run 5 s, exit 0 if it controlled the fans
+///   --selftest [--seconds 5]        start everything without an icon, run 5 s, exit 0 if it controlled the fans
 ///   --screenshot file.png [--page overview|curves|calibration|settings] [--height 2000]   render the window off-screen to a PNG
 /// </summary>
 internal static class Program
@@ -89,6 +89,7 @@ internal static class Program
             Microsoft.Win32.SystemEvents.SessionEnding += (_, _) => app.Loop.Dispose();
 
             app.Loop.Start();
+            MemoryUpkeep.Start();
 
             if (screenshot is not null)
                 return Screenshot(app, screenshot, Option(args, "--page") ?? "overview", double.TryParse(Option(args, "--height"), out double h) ? h : null);
@@ -105,7 +106,8 @@ internal static class Program
             }
             else if (selfTest)
             {
-                After(TimeSpan.FromSeconds(5), () => wpf.Shutdown(app.Loop.Last is { State: Core.Control.LoopState.Running } ? 0 : 3));
+                After(TimeSpan.FromSeconds(double.TryParse(Option(args, "--seconds"), out double s) ? s : 5),
+                    () => wpf.Shutdown(app.Loop.Last is { State: Core.Control.LoopState.Running } ? 0 : 3));
             }
             else if (args.Contains("--open"))
                 wpf.Dispatcher.BeginInvoke(() => tray.OpenWindow());

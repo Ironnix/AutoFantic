@@ -15,8 +15,7 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <!-- about half the size to download; unpacked in memory at start (a second or so) -->
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- not compressed: a compressed exe is half the size, but unpacks into about 80 MB of RAM -->
   </PropertyGroup>
 
   <ItemGroup>
