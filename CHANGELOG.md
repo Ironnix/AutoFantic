@@ -1,8 +1,6 @@
 # Changelog
 
-
-
-## [0.2.0] - not released yet
+## [0.2.0] - 30.09.2026
 
 ### New
 
