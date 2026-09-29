@@ -1,6 +1,11 @@
 # Changelog
 
-<!-- For a release: give the section below its date, then push the tag (e.g. v0.1.0). The release build takes this section as its notes. -->
+
+
+## [0.2.0] - not released yet
+
+
+
 
 ## [0.1.0] - 30.09.2026
 
