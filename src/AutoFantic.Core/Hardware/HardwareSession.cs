@@ -14,6 +14,11 @@ public sealed class HardwareSession : FanSession
     private readonly Dictionary<FanChannel, IHardware> _hardwareOf = [];
     private readonly Dictionary<ISensor, (string Id, string Hardware, string HardwareType, SensorKind Kind)> _names = [];
 
+    // the last focused read: which sensors, and the hardware that has to be read for them
+    private IReadOnlySet<string>? _focus;
+    private List<ISensor> _focusSensors = [];
+    private List<IHardware> _focusHardware = [];
+
     public HardwareSession()
     {
         _computer = new Computer
@@ -80,18 +85,44 @@ public sealed class HardwareSession : FanSession
     private static object? ChipOf(IHardware hardware) =>
         hardware.GetType().GetField("_superIO", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(hardware);
 
-    protected override Snapshot ReadCore()
+    protected override Snapshot ReadCore(IReadOnlySet<string>? only)
     {
-        Update();
-        var readings = new List<SensorReading>(_names.Count);
-        foreach (var s in AllSensors())
+        if (only is null)
         {
-            // a sensor's id and names never change: made once, not every second (less garbage)
-            if (!_names.TryGetValue(s, out var n))
-                _names[s] = n = (s.Identifier.ToString(), s.Hardware.Name, s.Hardware.HardwareType.ToString(), ToKind(s.SensorType));
-            readings.Add(new SensorReading(n.Id, n.Hardware, n.HardwareType, n.Kind, s.Name, s.Value));
+            Update();
+            var all = new List<SensorReading>(_names.Count);
+            foreach (var s in AllSensors())
+                all.Add(Reading(s));
+            return new Snapshot(DateTimeOffset.Now, all);
         }
+
+        // e.g. the integrated Radeon next to the graphics card, or a fan hub that isn't used: not read at all
+        if (!ReferenceEquals(only, _focus))
+        {
+            _focus = only;
+            _focusSensors = AllSensors().Where(s => only.Contains(Names(s).Id)).ToList();
+            _focusHardware = _focusSensors.Select(s => s.Hardware).Distinct().ToList();
+        }
+        foreach (var hardware in _focusHardware)
+            hardware.Update();
+        var readings = new List<SensorReading>(_focusSensors.Count);
+        foreach (var s in _focusSensors)
+            readings.Add(Reading(s));
         return new Snapshot(DateTimeOffset.Now, readings);
+    }
+
+    private SensorReading Reading(ISensor s)
+    {
+        var n = Names(s);
+        return new SensorReading(n.Id, n.Hardware, n.HardwareType, n.Kind, s.Name, s.Value);
+    }
+
+    // a sensor's id and names never change: made once, not every second (less garbage)
+    private (string Id, string Hardware, string HardwareType, SensorKind Kind) Names(ISensor s)
+    {
+        if (!_names.TryGetValue(s, out var n))
+            _names[s] = n = (s.Identifier.ToString(), s.Hardware.Name, s.Hardware.HardwareType.ToString(), ToKind(s.SensorType));
+        return n;
     }
 
     protected override void DisposeCore() => _computer.Close();

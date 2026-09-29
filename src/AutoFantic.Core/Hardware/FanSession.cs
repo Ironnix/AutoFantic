@@ -47,12 +47,27 @@ public abstract class FanSession : IDisposable
         return load;
     }
 
+    /// <summary>Every sensor (finding the fans, a calibration, the developer view).</summary>
     public Snapshot Read()
     {
         lock (Sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            return ReadCore();
+            return ReadCore(null);
+        }
+    }
+
+    /// <summary>
+    /// Only these sensors, for what runs every second (the fan control, the monitor): only the
+    /// hardware they belong to is read, and no values are made for the others. Pass the same set
+    /// each time; the session may keep what it worked out for it.
+    /// </summary>
+    public Snapshot Read(IReadOnlySet<string> only)
+    {
+        lock (Sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return ReadCore(only);
         }
     }
 
@@ -192,7 +207,8 @@ public abstract class FanSession : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected abstract Snapshot ReadCore();
+    /// <param name="only">The sensor ids wanted; null = all.</param>
+    protected abstract Snapshot ReadCore(IReadOnlySet<string>? only);
 
     protected virtual void DisposeCore() { }
 }

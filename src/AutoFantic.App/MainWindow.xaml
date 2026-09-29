@@ -100,7 +100,10 @@
             <TextBlock x:Name="SideStatus" DockPanel.Dock="Bottom" Style="{StaticResource Caption}" Margin="6,0" />
             <StackPanel>
                 <RadioButton x:Name="NavOverview" Style="{StaticResource Nav}" GroupName="nav" IsChecked="True" Content="Overview" />
+                <RadioButton x:Name="NavMonitor" Style="{StaticResource Nav}" GroupName="nav" Content="Monitor" />
                 <RadioButton x:Name="NavCurves" Style="{StaticResource Nav}" GroupName="nav" Content="Fan curves" />
+                <RadioButton x:Name="NavReports" Style="{StaticResource Nav}" GroupName="nav" Content="Reports" />
+                <RadioButton x:Name="NavHealth" Style="{StaticResource Nav}" GroupName="nav" Content="Cooling health" />
                 <RadioButton x:Name="NavCalibration" Style="{StaticResource Nav}" GroupName="nav" Content="Calibration" />
                 <RadioButton x:Name="NavLog" Style="{StaticResource Nav}" GroupName="nav" Content="Activity" />
                 <RadioButton x:Name="NavSettings" Style="{StaticResource Nav}" GroupName="nav" Content="Settings" />
@@ -116,7 +119,14 @@
 
                     <!-- what the start-up checks found that needs a look (another fan program, a missing driver) -->
                     <Border x:Name="NoticeCard" Style="{StaticResource Card}" Visibility="Collapsed">
-                        <StackPanel x:Name="NoticeRows" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel x:Name="NoticeRows" />
+                            <Button x:Name="NoticeRecheck" Grid.Column="1" Content="Check again" Padding="14,6" VerticalAlignment="Top" />
+                        </Grid>
                     </Border>
 
                     <Border Style="{StaticResource Card}">
@@ -171,9 +181,134 @@
                         <StackPanel>
                             <TextBlock Text="How your PC should sound" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
-                                       Text="A preset for all fans at once. Switching works the curves out again from your measurements; curves you set by hand stay." />
+                                       Text="One setting for all fans. Your own curves stay." />
                             <UniformGrid x:Name="PresetButtons" Columns="4" />
                             <TextBlock x:Name="ProfileNote" Style="{StaticResource Caption}" Margin="0,10,0,0" Visibility="Collapsed" />
+                            <StackPanel x:Name="QuietPanel" Margin="0,18,0,0">
+                                <TextBlock Text="Extra quiet" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,10"
+                                           Text="Every fan at its slowest, and off where it can stop (the graphics card too), as long as it stays cool." />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <CheckBox x:Name="QuietAway" Content="When I'm away for" VerticalAlignment="Center" />
+                                    <TextBox x:Name="QuietAwayMinutes" Width="52" Margin="8,0,6,0" VerticalContentAlignment="Center" />
+                                    <TextBlock Text="min" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox x:Name="QuietNight" Content="At night, from" VerticalAlignment="Center" />
+                                    <TextBox x:Name="QuietFrom" Width="64" Margin="8,0,6,0" VerticalContentAlignment="Center" />
+                                    <TextBlock Text="to" VerticalAlignment="Center" />
+                                    <TextBox x:Name="QuietTo" Width="64" Margin="6,0,0,0" VerticalContentAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- monitor: the history of temperatures, power and fans, and the warnings -->
+            <ScrollViewer x:Name="MonitorPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Monitor" Style="{StaticResource Heading}" />
+                    <WrapPanel x:Name="RangeButtons" Margin="0,0,0,8" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Temperatures" Style="{StaticResource CardTitle}" />
+                            <local:HistoryChart x:Name="TempChart" Height="220" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Power" Style="{StaticResource CardTitle}" />
+                            <local:HistoryChart x:Name="PowerChart" Height="180" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Fans" Style="{StaticResource CardTitle}" />
+                            <local:HistoryChart x:Name="FanChart" Height="180" Margin="0,8,0,0" />
+                            <local:HistoryChart x:Name="RpmChart" Height="180" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Values" Style="{StaticResource CardTitle}" />
+                            <TextBlock x:Name="ValuesIntro" Style="{StaticResource Caption}" Margin="0,2,0,12" />
+                            <Grid x:Name="ValueRows" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Warnings" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12" Text="A message next to the clock and in Activity. The safety limits work on their own." />
+                            <CheckBox x:Name="FanStoppedBox" Content="When a fan stands still although it should turn" Margin="0,0,0,10" />
+                            <StackPanel x:Name="WarningRows" />
+                            <Button x:Name="AddWarning" Content="Add a warning" Padding="14,6" HorizontalAlignment="Left" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- reports: game sessions -->
+            <ScrollViewer x:Name="ReportsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Reports" Style="{StaticResource Heading}" />
+                    <TextBlock x:Name="ReportsNow" Style="{StaticResource Caption}" Margin="0,0,0,12" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="By game" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12" Text="Every session: a program that kept the PC busy for at least 3 minutes. Ø = average." />
+                            <Grid x:Name="GameRows" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Sessions" Style="{StaticResource CardTitle}" Margin="0,0,0,12" />
+                            <Grid x:Name="SessionRows" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- cooling health -->
+            <ScrollViewer x:Name="HealthPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="Cooling health" Style="{StaticResource Heading}" />
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Ellipse x:Name="HealthDot" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,16,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock x:Name="HealthTitle" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock x:Name="HealthDetail" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <Button x:Name="HealthCalibrate" Grid.Column="2" Content="Calibrate again" Padding="16,9" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Last 7 days" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12"
+                                       Text="Compared with what the calibration expects at the same power and fan speeds." />
+                            <Grid x:Name="HealthRows" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Over time" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                       Text="Per day: how much warmer CPU and GPU run at full load than expected, and the room." />
+                            <local:HistoryChart x:Name="HealthChart" Height="220" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="How it works" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                       Text="A warmer room makes CPU and GPU warmer by the same amount, at any load. Dust in the filters and heatsinks, or old thermal paste, makes them warmer the harder they work. AutoFantic tells the two apart from every steady minute, and compares with the first week after the calibration." />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -221,7 +356,11 @@
                                 <CheckBox x:Name="AllowStop" Content="Switch off when the PC is idle and cool" />
                                 <TextBlock x:Name="StopHint" Style="{StaticResource Caption}" Margin="28,2,16,0" TextWrapping="Wrap" />
                                 <TextBlock x:Name="CurveHint" Style="{StaticResource Caption}" Margin="0,8,16,0"
-                                           Text="Drag a point to change it · double-click to add a point · right-click a point to remove it. Changes apply right away; the safety limits always stay on." />
+                                           Text="Drag a point · double-click to add · right-click to remove. Applies right away." />
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <TextBlock x:Name="FallbackText" Style="{StaticResource Caption}" VerticalAlignment="Center" TextWrapping="NoWrap" />
+                                    <Button x:Name="CopyFallback" Content="Copy" Padding="10,3" Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
                             </StackPanel>
                             <Button x:Name="ResetCurve" Grid.Column="1" Content="Reset to recommended" Padding="16,9" VerticalAlignment="Center" />
                         </Grid>
@@ -240,7 +379,7 @@
                             <StackPanel>
                                 <TextBlock Text="Welcome to AutoFantic" Style="{StaticResource CardTitle}" />
                                 <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                           Text="Until AutoFantic knows your PC, the BIOS keeps controlling the fans. Two steps, about 20 minutes: find out which outputs have fans, then calibrate once while you play (or with the built-in load). After that AutoFantic runs your fans by itself, and you can calibrate again any time." />
+                                           Text="Two steps, about 20 minutes. Until then the BIOS keeps your fans." />
                             </StackPanel>
                         </Border>
                         <Border Style="{StaticResource Card}">
@@ -260,7 +399,7 @@
                             <StackPanel>
                                 <TextBlock x:Name="FindFansTitle" Text="Step 1 · Find my fans" Style="{StaticResource CardTitle}" />
                                 <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                           Text="Every fan output runs through 100, 60 and 30 % in turn, so AutoFantic learns which ones have a fan, how fast it turns and whether it can stop. About 2 minutes, best while the PC is idle; you'll hear the fans change." />
+                                           Text="Each fan output runs through a few speeds. About 2 minutes, best while the PC is idle." />
                                 <Button x:Name="SetupFindFans" Content="Find my fans" Style="{DynamicResource AccentButtonStyle}" Padding="18,9" MinWidth="170"
                                         HorizontalAlignment="Left" Margin="0,16,0,0" />
                                 <StackPanel x:Name="FoundFans" Margin="0,14,0,0" Visibility="Collapsed" />
@@ -272,16 +411,16 @@
                         <StackPanel>
                             <TextBlock x:Name="CalibrateTitle" Text="Calibrate" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                       Text="While your PC works, AutoFantic tries 9 combinations of fan speeds and learns what each fan cools. Every calibration adds to the ones before: a GPU-heavy game and a CPU-heavy render together teach both sides. Takes 15-30 minutes; you'll hear the fans change. If it gets too hot, all fans go to 100 % until it's cool again." />
+                                       Text="AutoFantic tries 9 fan settings while your PC works and learns what each fan cools. About 15 minutes. Each calibration adds to the last: a game teaches the GPU side, a render the CPU side." />
                             <StackPanel x:Name="CalibrateSetup" Margin="0,16,0,0">
                                 <RadioButton x:Name="LoadGame" GroupName="load" IsChecked="True" Margin="0,0,0,6"
-                                             Content="My game or program: start it when AutoFantic asks, then play normally" />
+                                             Content="My game: start it when asked, then play normally" />
                                 <RadioButton x:Name="LoadBuiltIn" GroupName="load"
-                                             Content="Built-in load: AutoFantic loads CPU and graphics card itself; don't use the PC meanwhile" />
+                                             Content="Built-in load: don't use the PC meanwhile" />
                                 <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                                     <TextBlock Text="Room temperature" VerticalAlignment="Center" Margin="0,0,10,0" />
                                     <TextBox x:Name="RoomTemp" Width="64" Text="22" VerticalContentAlignment="Center" />
-                                    <TextBlock Text="°C · a guess is fine" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                    <TextBlock Text="°C (a guess is fine)" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="8,0,0,0" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
@@ -312,7 +451,7 @@
                         <StackPanel>
                             <TextBlock Text="Your fans" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
-                                       Text="How many fans hang on each output and how loud they are. AutoFantic speeds up the quiet, effective fans first; the settings are worked out again right away." />
+                                       Text="How many fans are on each output, and how loud. Quiet fans are sped up first." />
                             <StackPanel x:Name="LoudnessRows" />
                         </StackPanel>
                     </Border>
@@ -321,7 +460,7 @@
                         <StackPanel>
                             <TextBlock Text="What each fan cools" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
-                                       Text="How much warmer the CPU and the graphics card get when the fan goes from 100 % to its slowest speed, at the highest load measured." />
+                                       Text="How much warmer CPU and GPU get with this fan at its slowest instead of 100 %, at full load." />
                             <StackPanel x:Name="EffectRows" />
                         </StackPanel>
                     </Border>
@@ -330,7 +469,7 @@
                         <StackPanel>
                             <TextBlock Text="Runs" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
-                                       Text="Every run of every calibration, newest first: the fan speeds, the load, where the temperatures settled, and the bottleneck, the part that came closest to its limit." />
+                                       Text="Every measurement, newest first. Bottleneck = the part closest to its limit." />
                             <StackPanel x:Name="RunRows" />
                         </StackPanel>
                     </Border>
@@ -352,7 +491,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,16,0"
-                               Text="What AutoFantic did, newest first: safety stops, sensor problems, fans switching off and on, calibrations, pauses, and what the watchdog did after a crash." />
+                               Text="What AutoFantic did, newest first." />
                     <Button x:Name="OpenLogFile" Grid.Column="1" Content="Open the log file" Padding="16,9" />
                 </Grid>
                 <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0" Padding="20,14">
@@ -366,19 +505,7 @@
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <TextBlock Text="Settings" Style="{StaticResource Heading}" />
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="System check" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
-                                <Button x:Name="SettingsRecheck" Grid.Column="1" Content="Check again" Padding="14,6" />
-                            </Grid>
-                            <StackPanel x:Name="SettingsChecks" Margin="0,12,0,0" />
-                        </StackPanel>
-                    </Border>
+
                     <Border Style="{StaticResource Card}">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -388,7 +515,7 @@
                             <StackPanel>
                                 <TextBlock Text="Start with Windows" Style="{StaticResource CardTitle}" />
                                 <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                           Text="AutoFantic starts when you log in, without an admin prompt (a Task Scheduler task)." />
+                                           Text="Starts when you log in, without an admin prompt." />
                             </StackPanel>
                             <CheckBox x:Name="AutostartBox" Grid.Column="1" VerticalAlignment="Center" Content="On" />
                         </Grid>
@@ -408,14 +535,14 @@
                         <StackPanel>
                             <TextBlock Text="Developer" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
-                                       Text="Tools for testing and finding problems. Not needed for normal use." />
+                                       Text="For testing. Not needed for normal use." />
                             <WrapPanel>
                                 <Button x:Name="FindFansButton" Content="Find my fans again" Padding="16,9" Margin="0,0,10,10" />
                                 <Button x:Name="SensorsButton" Content="Show all sensors" Padding="16,9" Margin="0,0,10,10" />
                                 <Button x:Name="ConsoleButton" Content="Open the test console" Padding="16,9" Margin="0,0,10,10" />
                             </WrapPanel>
                             <TextBlock x:Name="DeveloperNote" Style="{StaticResource Caption}" Margin="0,4,0,0"
-                                       Text="Find my fans runs every fan through a few speeds (about 2 minutes, best at idle). The test console (recording a gaming session, measuring one fan, the crash test) closes AutoFantic first, so only one program drives the fans." />
+                                       Text="The test console closes AutoFantic first, so only one program drives the fans." />
                         </StackPanel>
                     </Border>
                 </StackPanel>

@@ -49,14 +49,14 @@ public static class SystemCheck
         int mainboard = session.Channels.Count(c => !IsGpu(c)), gpu = session.Channels.Count(IsGpu);
 
         checks.Add(mainboard > 0
-            ? new SetupCheck("Mainboard fans", CheckResult.Ok, $"{mainboard} fan outputs found on {session.Channels.First(c => !IsGpu(c)).Hardware}.")
+            ? new SetupCheck("Mainboard fans", CheckResult.Ok, $"{mainboard} outputs on {session.Channels.First(c => !IsGpu(c)).Hardware}.")
             : pawnIo
-            ? new SetupCheck("Mainboard fans", CheckResult.Problem, "No mainboard fan outputs found: the fan chip of this mainboard isn't supported by LibreHardwareMonitor (yet).")
-            : new SetupCheck("Mainboard fans", CheckResult.Problem, $"The PawnIO driver is missing, so the mainboard's fan chip can't be reached. Install it from {PawnIoUrl}, then start AutoFantic again."));
+            ? new SetupCheck("Mainboard fans", CheckResult.Problem, "None found: this mainboard's fan chip isn't supported yet.")
+            : new SetupCheck("Mainboard fans", CheckResult.Problem, $"The PawnIO driver is missing. Install it from {PawnIoUrl}, then restart AutoFantic."));
 
         checks.Add(gpu > 0
-            ? new SetupCheck("Graphics card fans", CheckResult.Ok, $"{gpu} fan output{(gpu == 1 ? "" : "s")} found on {session.Channels.First(IsGpu).Hardware}.")
-            : new SetupCheck("Graphics card fans", CheckResult.Info, "No graphics card fans found: the card keeps its own fan curve. (NVIDIA and AMD cards are supported.)"));
+            ? new SetupCheck("Graphics card fans", CheckResult.Ok, $"{gpu} output{(gpu == 1 ? "" : "s")} on {session.Channels.First(IsGpu).Hardware}.")
+            : new SetupCheck("Graphics card fans", CheckResult.Info, "None found: the card keeps its own fan curve."));
 
         var missing = new List<string>();
         if (keys.CpuTemp is null)
@@ -66,13 +66,13 @@ public static class SystemCheck
         if (keys.CpuPower is null)
             missing.Add("CPU power");
         checks.Add(missing.Count == 0
-            ? new SetupCheck("Temperatures", CheckResult.Ok, "CPU and GPU temperature and power found.")
-            : new SetupCheck("Temperatures", keys.CpuTemp is null ? CheckResult.Problem : CheckResult.Warning, $"Not found: {string.Join(", ", missing)}."));
+            ? new SetupCheck("Temperatures", CheckResult.Ok, "CPU and GPU found.")
+            : new SetupCheck("Temperatures", keys.CpuTemp is null ? CheckResult.Problem : CheckResult.Warning, $"Missing: {string.Join(", ", missing)}."));
 
         checks.Add(otherTools.Count == 0
             ? new SetupCheck("Other fan programs", CheckResult.Ok, "None running.")
             : new SetupCheck("Other fan programs", CheckResult.Warning,
-                $"{string.Join(", ", otherTools)} running. Switch its fan control off (monitoring is fine), or the two programs fight over the same fans."));
+                $"{string.Join(", ", otherTools)} is running: switch its fan control off."));
         return checks;
     }
 

@@ -62,6 +62,9 @@ public sealed class FanControlLoop : IDisposable
     private DateTimeOffset _sensorRetryAt;
     private bool _retryingSensors;
     private bool _paused;
+    private IReadOnlySet<string> _needed;
+    private string? _quiet;
+    private string? _monitorError;
     private Thread? _thread;
     private CancellationTokenSource? _stop;
     private int _disposed;
@@ -69,7 +72,8 @@ public sealed class FanControlLoop : IDisposable
     /// <param name="calibration">The curves; null = not calibrated yet (the BIOS keeps the fans until <see cref="UseCalibration"/>).</param>
     /// <param name="minSpinning">Per calibrated group: the lowest speed at which its fans turn.</param>
     /// <param name="log">Where safety stops, sensor problems and fans switching off and on are written.</param>
-    public FanControlLoop(FanSession session, CalibrationResult? calibration, IReadOnlyList<double> minSpinning, ActivityLog? log = null)
+    /// <param name="canStop">Per calibrated group: its fans stand still at 0 % (for quiet mode).</param>
+    public FanControlLoop(FanSession session, CalibrationResult? calibration, IReadOnlyList<double> minSpinning, ActivityLog? log = null, IReadOnlyList<bool>? canStop = null)
     {
         _session = session;
         _log = log ?? ActivityLog.InMemoryOnly();
@@ -77,14 +81,68 @@ public sealed class FanControlLoop : IDisposable
         _channels = calibration is null ? [] : ChannelsFor(session, calibration);
         _keys = KeySensors.Detect(session.Read());
         _plausibility = new SensorPlausibility(_keys);
-        _controller = calibration is null ? null : new CurveController(calibration, minSpinning);
+        _controller = calibration is null ? null : new CurveController(calibration, minSpinning, canStop);
         State = calibration is null ? LoopState.NotSetUp : LoopState.Running;
+        _needed = Needed([]);
     }
+
+    /// <summary>
+    /// Every step reads only the key sensors plus these (e.g. the fans' RPM for the monitor), not
+    /// all of them: less work and less memory churn every second.
+    /// </summary>
+    public void Watch(IEnumerable<string> sensorIds)
+    {
+        var needed = Needed(sensorIds);
+        lock (_lock)
+            _needed = needed;
+    }
+
+    private HashSet<string> Needed(IEnumerable<string> extra) =>
+        [.. new[] { _keys.CpuTemp, _keys.CpuPower, _keys.GpuTemp, _keys.GpuHotspot, _keys.GpuMemory, _keys.GpuPower, _keys.CpuLoad, _keys.GpuLoad }.OfType<string>(), .. extra];
+
+    /// <summary>After every step: what was read and what the fan control made of it (for the monitor). Raised on the loop's thread.</summary>
+    public event Action<Snapshot, LoopStatus>? Sampled;
 
     public LoopState State { get; private set; }
 
     /// <summary>The key sensors found at the start (CPU and GPU temperature and power …).</summary>
     public KeySensors Keys => _keys;
+
+    /// <summary>Per calibrated group: its fans stand still at 0 % (fans.json).</summary>
+    public static IReadOnlyList<bool> CanStop(CalibrationResult calibration, FanInventory inventory)
+    {
+        var known = inventory.Groups();
+        return calibration.Groups
+            .Select(g => known.FirstOrDefault(k => k.Headers.Select(h => h.ControlId).SequenceEqual(g.ControlIds))?.CanStop == true)
+            .ToList();
+    }
+
+    /// <summary>Why the fans are as quiet as possible now ("away", "night"); null = normal. Takes effect on the next step.</summary>
+    public string? Quiet
+    {
+        get => _quiet;
+        set
+        {
+            lock (_lock)
+            {
+                _quiet = value;
+                if (_controller is not null)
+                    _controller.Quiet = value;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True while nothing is going on (low load, cool): then the loop reads every
+    /// <see cref="RelaxedInterval"/> instead of every second. Anything else and it's back to every second.
+    /// </summary>
+    public bool Relaxed { get; private set; }
+
+    public static readonly TimeSpan RelaxedInterval = TimeSpan.FromSeconds(2);
+
+    // "nothing going on": both loads below this (%), both temperatures at most this (°C)
+    private const double RelaxedBelowLoad = 15;
+    private const double RelaxedBelow = 55;
 
     /// <summary>Per calibrated group: the lowest speed its fans turn at, from what was measured (fans.json).</summary>
     public static IReadOnlyList<double> MinSpinning(CalibrationResult calibration, FanInventory inventory)
@@ -108,7 +166,7 @@ public sealed class FanControlLoop : IDisposable
     /// Switches to other curves while running (another profile, a curve edited by hand). Takes
     /// effect on the next step, starting right at the new curves.
     /// </summary>
-    public void UseCalibration(CalibrationResult calibration, IReadOnlyList<double> minSpinning)
+    public void UseCalibration(CalibrationResult calibration, IReadOnlyList<double> minSpinning, IReadOnlyList<bool>? canStop = null)
     {
         var channels = ChannelsFor(_session, calibration);
         lock (_lock)
@@ -118,7 +176,7 @@ public sealed class FanControlLoop : IDisposable
                 _session.RestoreDefault(channel);
             _calibration = calibration;
             _channels = channels;
-            _controller = new CurveController(calibration, minSpinning);
+            _controller = new CurveController(calibration, minSpinning, canStop) { Quiet = _quiet };
             if (State == LoopState.NotSetUp)
                 State = LoopState.Running;
         }
@@ -161,8 +219,7 @@ public sealed class FanControlLoop : IDisposable
         var token = _stop.Token;
         _thread = new Thread(() =>
         {
-            var interval = TimeSpan.FromSeconds(1 / _session.TimeScale);
-            while (!token.WaitHandle.WaitOne(interval))
+            while (!token.WaitHandle.WaitOne(TimeSpan.FromSeconds((Relaxed ? RelaxedInterval.TotalSeconds : 1) / _session.TimeScale)))
             {
                 try
                 {
@@ -185,9 +242,26 @@ public sealed class FanControlLoop : IDisposable
     /// <summary>One control step: read, check, drive. Public so tests can step it with a fake clock.</summary>
     public LoopStatus Tick()
     {
+        var (snapshot, status) = Step();
+        try
+        {
+            Sampled?.Invoke(snapshot, status);
+        }
+        catch (Exception ex)
+        {
+            // the monitor (history, warnings) must never be taken for a fan control error; said once
+            if (ex.Message != _monitorError)
+                _log.Add(LogKind.Warning, $"Monitor: {ex.Message}");
+            _monitorError = ex.Message;
+        }
+        return status;
+    }
+
+    private (Snapshot, LoopStatus) Step()
+    {
         lock (_lock)
         {
-            var s = _session.Read();
+            var s = _session.Read(_needed);
             double? cpu = s.Value(_keys.CpuTemp), gpu = s.Value(_keys.GpuTemp);
             double cpuW = s.Value(_keys.CpuPower) ?? 0, gpuW = s.Value(_keys.GpuPower) ?? 0;
             double?[] speeds = new double?[_channels.Count]; // null = BIOS
@@ -266,7 +340,11 @@ public sealed class FanControlLoop : IDisposable
 
             var fans = _calibration is null ? [] : _calibration.Groups.Select((g, i) => new FanReading(g.Name, speeds[i], status?[i])).ToList();
             Last = new LoopStatus(s.Time, State, cpu, gpu, cpuW, gpuW, fans);
-            return Last;
+            // nothing going on: every 2 s is plenty (a game or a limit brings it back to every second)
+            double cpuLoad = s.Value(_keys.CpuLoad) ?? 100, gpuLoad = s.Value(_keys.GpuLoad) ?? 100;
+            Relaxed = State is LoopState.Running or LoopState.Paused or LoopState.NotSetUp
+                && cpuLoad < RelaxedBelowLoad && gpuLoad < RelaxedBelowLoad && (cpu ?? 100) <= RelaxedBelow && (gpu ?? 100) <= RelaxedBelow;
+            return (s, Last);
         }
     }
 

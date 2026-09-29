@@ -12,8 +12,8 @@ public class SystemCheckTests
         var checks = SystemCheck.Run(pc, KeySensors.Detect(pc.Read()), pawnIo: true, otherTools: []);
 
         Assert.All(checks, c => Assert.Equal(CheckResult.Ok, c.Result));
-        Assert.Contains("3 fan outputs", checks.Single(c => c.Title == "Mainboard fans").Detail);
-        Assert.Contains("1 fan output found", checks.Single(c => c.Title == "Graphics card fans").Detail);
+        Assert.Contains("3 outputs", checks.Single(c => c.Title == "Mainboard fans").Detail);
+        Assert.Contains("1 output on", checks.Single(c => c.Title == "Graphics card fans").Detail);
     }
 
     [Fact]

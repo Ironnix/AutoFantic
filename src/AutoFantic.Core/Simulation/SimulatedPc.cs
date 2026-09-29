@@ -77,6 +77,9 @@ public sealed class SimulatedPc : FanSession
 
     public double Ambient { get; set; }
 
+    /// <summary>How dusty the PC is: 1 = clean; 1.2 = heat gets out 20 % worse (for the cooling health).</summary>
+    public double Dust { get; set; } = 1;
+
     /// <summary>What the PC is doing right now.</summary>
     public SimLoad Load => _testLoad ?? _schedule(_clock() - _start);
 
@@ -110,7 +113,7 @@ public sealed class SimulatedPc : FanSession
     public static double GpuResistance(double gpuFan, double caseFans) =>
         0.08 + 5.0 / (gpuFan + 15) + 1.5 / (caseFans + 15);
 
-    protected override Snapshot ReadCore()
+    protected override Snapshot ReadCore(IReadOnlySet<string>? only)
     {
         var now = _clock();
         Advance((now - _lastUpdate).TotalSeconds);
@@ -142,7 +145,7 @@ public sealed class SimulatedPc : FanSession
             new("/sim/gpu/fan/0", gpu, "GpuNvidia", SensorKind.Fan, "GPU Fan", Rpm(GpuFan)),
             new(Fans[GpuFan].Id, gpu, "GpuNvidia", SensorKind.Control, "GPU Fan", _percent[GpuFan]),
         ];
-        return new Snapshot(now, readings);
+        return new Snapshot(now, only is null ? readings : readings.Where(r => only.Contains(r.Id)).ToList());
     }
 
     private void Advance(double seconds)
@@ -154,9 +157,9 @@ public sealed class SimulatedPc : FanSession
         _gpuTemp += (GpuTarget() - _gpuTemp) * (1 - Math.Exp(-seconds / 40.0));
     }
 
-    private double CpuTarget() => Ambient + Load.CpuPower * CpuResistance(_percent[CpuFan], _percent[CaseFans]);
+    private double CpuTarget() => Ambient + Load.CpuPower * CpuResistance(_percent[CpuFan], _percent[CaseFans]) * Dust;
 
-    private double GpuTarget() => Ambient + Load.GpuPower * GpuResistance(Effective(GpuFan), _percent[CaseFans]);
+    private double GpuTarget() => Ambient + Load.GpuPower * GpuResistance(Effective(GpuFan), _percent[CaseFans]) * Dust;
 
     // The GPU fan stops below 31 % (0-RPM mode), like many real cards.
     private float Effective(int fan) => fan == GpuFan && _percent[fan] <= 30 ? 0 : _percent[fan];

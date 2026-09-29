@@ -62,10 +62,10 @@ public sealed record Preset(string Id, string Name, string Description, Profile 
 {
     public static IReadOnlyList<Preset> All { get; } =
     [
-        new("silent", "Silent", "As quiet as possible. CPU up to about 87 °C, graphics card up to 82 °C.", Profile.Max(90) with { Name = "Silent" }),
-        new("balanced", "Balanced", "Cool and quiet. CPU and graphics card up to 80 °C.", Profile.Max(80) with { Name = "Balanced" }),
-        new("cool", "Cool", "Lower temperatures, a bit louder. Up to 70 °C.", Profile.Max(70) with { Name = "Cool" }),
-        new("max", "Max cooling", "The lowest temperatures without pointless noise: every fan only as fast as it still clearly helps.", Profile.Coolest()),
+        new("silent", "Silent", "The quietest\nup to 87 °C", Profile.Max(90) with { Name = "Silent" }),
+        new("balanced", "Balanced", "Quiet and cool\nup to 80 °C", Profile.Max(80) with { Name = "Balanced" }),
+        new("cool", "Cool", "A bit louder\nup to 70 °C", Profile.Max(70) with { Name = "Cool" }),
+        new("max", "Max cooling", "The coolest\nwithout pointless noise", Profile.Coolest()),
     ];
 
     /// <summary>By id ("silent"), name ("Silent"), an old profile name ("Max 90") or a number ("80"); Balanced if unknown.</summary>

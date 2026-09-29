@@ -7,6 +7,8 @@
   <ItemGroup>
     <!-- Talks to the Super I/O chip, CPU and GPU directly (via the PawnIO driver / NVAPI / ADLX). -->
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
+    <!-- the monitor's history (history.db); settings and calibration stay readable JSON -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
   </ItemGroup>

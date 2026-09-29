@@ -8,7 +8,8 @@ namespace AutoFantic.Core.Control;
 /// burst of work). Fans speed up quickly and slow down gently, because changing noise is more
 /// annoying than steady noise. At low load a group that may stop is switched off while the part
 /// it cools is cool and nothing else is warm, with hysteresis and minimum on/off times so it
-/// doesn't keep cycling.
+/// doesn't keep cycling. In quiet mode (away, at night) every fan runs at its slowest and every fan
+/// that can stop is off, whatever the load, as long as it stays cool.
 /// </summary>
 public sealed class CurveController
 {
@@ -31,10 +32,17 @@ public sealed class CurveController
     public static readonly TimeSpan MinOn = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan MinOff = TimeSpan.FromSeconds(30);
 
+    /// <summary>Quiet mode: every fan at its slowest while the part it follows is at most this warm …</summary>
+    public const double QuietBelow = 60;
+
+    /// <summary>… then back to its curve over this many °C, so a render while you're away is still cooled.</summary>
+    public const double QuietBlend = 10;
+
     private const double SmoothingSeconds = 8;
 
     private readonly CalibrationResult _calibration;
     private readonly double[] _minSpinning;
+    private readonly bool[] _canStop;
     private readonly GroupState[] _state;
     private readonly FanStatus[] _status;
     private readonly Dictionary<Component, double> _smoothed = [];
@@ -51,10 +59,12 @@ public sealed class CurveController
     }
 
     /// <param name="minSpinning">Per calibrated group: the lowest speed at which its fans turn.</param>
-    public CurveController(CalibrationResult calibration, IReadOnlyList<double> minSpinning)
+    /// <param name="canStop">Per calibrated group: its fans stand still at 0 % (quiet mode switches them off). Default: none.</param>
+    public CurveController(CalibrationResult calibration, IReadOnlyList<double> minSpinning, IReadOnlyList<bool>? canStop = null)
     {
         _calibration = calibration;
         _minSpinning = minSpinning.ToArray();
+        _canStop = calibration.Groups.Select((_, g) => canStop is not null && g < canStop.Count && canStop[g]).ToArray();
         _state = calibration.Groups.Select(_ => new GroupState()).ToArray();
         _status = calibration.Groups.Select(_ => new FanStatus(null, null, FanNote.OnCurve)).ToArray();
     }
@@ -64,6 +74,9 @@ public sealed class CurveController
 
     /// <summary>The groups that switched off or on again in the last step, and why (for the log).</summary>
     public IReadOnlyList<FanSwitch> Switches => _switches;
+
+    /// <summary>Why the fans are as quiet as possible now ("away", "night"); null = normal.</summary>
+    public string? Quiet { get; set; }
 
     /// <summary>
     /// Where a group that may stop switches off: at or below the last of its curve's leading 0 %
@@ -122,8 +135,10 @@ public sealed class CurveController
             var group = _calibration.Groups[g];
             var state = _state[g];
             double temperature = group.Follows == Component.Warmest ? warmest : _smoothed.GetValueOrDefault(group.Follows);
-            double offAt = OffTemperature(group);
-            bool mayStop = group.OffAt.Count > 0 && lowLoad;
+            // quiet: any fan that can stop may, at any load, up to where nothing may be off anyway
+            bool quietOff = Quiet is not null && _canStop[g];
+            double offAt = quietOff ? OthersBelow : OffTemperature(group);
+            bool mayStop = quietOff || (group.OffAt.Count > 0 && lowLoad);
 
             if (state.Off)
             {
@@ -145,7 +160,7 @@ public sealed class CurveController
             {
                 state.Off = true;
                 state.Since = now;
-                _switches.Add(new FanSwitch(g, true, $"idle and cool ({CalibrationInsights.Name(group.Follows)} {temperature:0} °C, CPU {cpuPower:0} W, GPU {gpuPower:0} W)"));
+                _switches.Add(new FanSwitch(g, true, $"{(quietOff ? $"quiet ({Quiet})" : "idle")} and cool ({CalibrationInsights.Name(group.Follows)} {temperature:0} °C, CPU {cpuPower:0} W, GPU {gpuPower:0} W)"));
             }
 
             double curve = Interpolate(group.Curve, temperature);
@@ -157,6 +172,12 @@ public sealed class CurveController
             }
 
             double target = Math.Max(curve, _minSpinning[g]);
+            if (Quiet is not null)
+            {
+                // the slowest speed while cool, then gradually the curve again
+                double blend = Math.Clamp((temperature - QuietBelow) / QuietBlend, 0, 1);
+                target = _minSpinning[g] + (target - _minSpinning[g]) * blend;
+            }
             state.Percent = double.IsNaN(state.Percent) ? target
                 : target > state.Percent
                 ? Math.Min(target, state.Percent + RampUpPerSecond * dt)
@@ -165,6 +186,7 @@ public sealed class CurveController
             output[g] = kick ? Math.Max(state.Percent, KickPercent) : state.Percent;
             _status[g] = new FanStatus(temperature, curve,
                 kick ? FanNote.Starting
+                : Quiet is not null && target < Math.Max(curve, _minSpinning[g]) - 0.5 && state.Percent <= target + 0.5 ? FanNote.Quiet
                 : state.Percent > target + 0.5 ? FanNote.SlowingDown
                 : state.Percent < target - 0.5 ? FanNote.SpeedingUp
                 : curve < _minSpinning[g] - 0.5 ? FanNote.Slowest
@@ -207,6 +229,9 @@ public enum FanNote
 
     /// <summary>Just switched on again: a short push so it reliably starts turning.</summary>
     Starting,
+
+    /// <summary>Below its curve on purpose: quiet mode (away, at night).</summary>
+    Quiet,
 }
 
 /// <param name="Temperature">The smoothed temperature the group follows (what the curve is read at).</param>

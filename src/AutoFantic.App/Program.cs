@@ -22,7 +22,7 @@ namespace AutoFantic.App;
 /// Options for checking a build without touching the screen (with --simulate):
 ///   --selftest [--seconds 5]        start everything without an icon, run 5 s, exit 0 if it controlled the fans (or, not set up, only watched)
 ///   --selftest-calibration          a whole calibration with the built-in load, as the window starts it (the first one finds the fans too)
-///   --screenshot file.png [--page overview|curves|calibration|log|settings] [--height 2000]   render the window off-screen to a PNG
+///   --screenshot file.png [--page overview|monitor|curves|calibration|log|settings] [--height 2000] [--full]   render the window off-screen to a PNG
 /// </summary>
 internal static class Program
 {
@@ -109,7 +109,7 @@ internal static class Program
             MemoryUpkeep.Start();
 
             if (screenshot is not null)
-                return Screenshot(app, screenshot, Option(args, "--page") ?? "overview", double.TryParse(Option(args, "--height"), out double h) ? h : null);
+                return Screenshot(app, screenshot, Option(args, "--page") ?? "overview", double.TryParse(Option(args, "--height"), out double h) ? h : null, args.Contains("--full"));
 
             Watchdog.Launch(simulate);
 
@@ -139,7 +139,8 @@ internal static class Program
     }
 
     /// <summary>Renders the window off-screen (nobody sees it) to a PNG, to check the look of a build.</summary>
-    private static int Screenshot(AppController app, string path, string page, double? height)
+    /// <param name="full">The whole page, also what is scrolled out of view (a window can't be taller than the screen).</param>
+    private static int Screenshot(AppController app, string path, string page, double? height, bool full)
     {
         var window = new MainWindow(app)
         {
@@ -158,7 +159,7 @@ internal static class Program
         After(TimeSpan.FromSeconds(4), () => frame.Continue = false);
         Dispatcher.PushFrame(frame);
 
-        var root = (FrameworkElement)window.Content;
+        var root = full && window.VisiblePage is System.Windows.Controls.ScrollViewer { Content: FrameworkElement content } ? content : (FrameworkElement)window.Content;
         var dpi = VisualTreeHelper.GetDpi(window);
         var size = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
         var visual = new DrawingVisual();

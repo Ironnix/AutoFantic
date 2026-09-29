@@ -73,6 +73,7 @@ internal sealed class TrayIcon : IDisposable
         _icon.DoubleClick += (_, _) => OpenWindow(_app.IsSetUp ? "overview" : "calibration");
 
         _app.Loop.Alert += message => _alerts.Enqueue(message);
+        _app.Alert += message => _alerts.Enqueue(message);
         _timer.Tick += (_, _) => Refresh();
         _timer.Start();
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
@@ -83,10 +84,10 @@ internal sealed class TrayIcon : IDisposable
             _icon.ShowBalloonTip(10000, "AutoFantic ended unexpectedly last time", ended, ToolTipIcon.Warning);
         else if (!_app.IsSetUp)
             _icon.ShowBalloonTip(5000, "AutoFantic isn't set up yet",
-                "The BIOS controls your fans until the first calibration. The window shows the two steps.", ToolTipIcon.Info);
+                "The BIOS keeps your fans until the first calibration.", ToolTipIcon.Info);
         else
             _icon.ShowBalloonTip(5000, "AutoFantic is running",
-                "Your fans follow your curves. Double-click the icon to open AutoFantic, right-click for quick actions.", ToolTipIcon.Info);
+                "Double-click to open, right-click for quick actions.", ToolTipIcon.Info);
     }
 
     /// <summary>One disabled menu item per fan group, after the temperatures; rebuilt when the groups change (the first calibration).</summary>
@@ -144,6 +145,7 @@ internal sealed class TrayIcon : IDisposable
                 LoopState.CoolingDown => "cooling down, all fans 100 %",
                 LoopState.SensorProblem => "sensor problem, BIOS in control",
                 LoopState.NotSetUp => "not set up yet, BIOS in control",
+                _ when _app.QuietReason is { } quiet => $"extra quiet ({quiet})",
                 _ => "running",
             };
         string temps = $"CPU {T(status.CpuTemp)} · GPU {T(status.GpuTemp)}";

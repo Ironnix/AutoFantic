@@ -4,6 +4,7 @@ using AutoFantic.Core.Calibration;
 using AutoFantic.Core.Control;
 using AutoFantic.Core.Hardware;
 using AutoFantic.Core.Logging;
+using AutoFantic.Core.Monitoring;
 using AutoFantic.Core.Reports;
 using AutoFantic.Core.Simulation;
 
@@ -11,8 +12,8 @@ namespace AutoFantic.App;
 
 /// <summary>
 /// Everything the window and the tray icon act on: the hardware, the running fan control, the
-/// recommended curves for the chosen preset, the user's own curves on top, calibrating, the checks
-/// and the log. Before the first calibration there are no curves (<see cref="IsSetUp"/> is false):
+/// recommended curves for the chosen preset, the user's own curves on top, calibrating, the checks,
+/// the log and the monitor's history. Before the first calibration there are no curves (<see cref="IsSetUp"/> is false):
 /// the BIOS keeps the fans and the window offers "Find my fans" and "Calibrate". No UI in here;
 /// events are raised on whatever thread did the work.
 /// </summary>
@@ -20,13 +21,16 @@ internal sealed class AppController : IDisposable
 {
     private CancellationTokenSource? _calibrating;
     private bool _userPaused, _sleeping;
+    private string? _quietReason;
+    private System.Threading.Timer? _healthTimer;
 
-    private AppController(FanSession session, FanControlLoop loop, string runs, ActivityLog log, FanInventory? inventory, CalibrationResult? recommended, CurveOverrides overrides)
+    private AppController(FanSession session, FanControlLoop loop, string runs, ActivityLog log, HistoryRecorder monitor, FanInventory? inventory, CalibrationResult? recommended, CurveOverrides overrides)
     {
         Session = session;
         Loop = loop;
         RunsPath = runs;
         Log = log;
+        Monitor = monitor;
         Inventory = inventory;
         Recommended = recommended;
         Overrides = overrides;
@@ -42,6 +46,30 @@ internal sealed class AppController : IDisposable
 
     /// <summary>What AutoFantic did: safety stops, sensor problems, fans off and on, calibrations …</summary>
     public ActivityLog Log { get; }
+
+    /// <summary>The history of temperatures, power and fans (history.db), and the user's warnings.</summary>
+    public HistoryRecorder Monitor { get; }
+
+    /// <summary>Something to show next to the clock right away (a warning the user set). Raised on any thread.</summary>
+    public event Action<string>? Alert;
+
+    /// <summary>When the fans should be extra quiet (away, at night).</summary>
+    public QuietSettings Quiet { get; private set; } = new();
+
+    /// <summary>Why the fans are extra quiet right now ("away", "night"); null = normal.</summary>
+    public string? QuietReason => _quietReason;
+
+    /// <summary>The health of every day so far was worked out again (in the background).</summary>
+    public event Action? HealthUpdated;
+
+    /// <summary>
+    /// The calibration the cooling health is measured against: the time of the latest measured
+    /// calibration (switching presets doesn't change it; calibrating again does).
+    /// </summary>
+    public DateTimeOffset? HealthReference =>
+        (Store.Calibrations.Count > 0 ? Store.Calibrations.Max(c => c.Time) : Recommended?.Created) is { } time
+            ? DateTimeOffset.FromUnixTimeSeconds(time.ToUnixTimeSeconds()) // whole seconds, as stored with each day
+            : null;
 
     /// <summary>What "Find my fans" found; null before it ran.</summary>
     public FanInventory? Inventory { get; private set; }
@@ -152,7 +180,8 @@ internal sealed class AppController : IDisposable
         try
         {
             var effective = calibration is null ? null : overrides.ApplyTo(calibration);
-            loop = new FanControlLoop(session, effective, effective is null ? [] : FanControlLoop.MinSpinning(effective, inventory!), log);
+            loop = new FanControlLoop(session, effective, effective is null ? [] : FanControlLoop.MinSpinning(effective, inventory!), log,
+                effective is null ? null : FanControlLoop.CanStop(effective, inventory!));
         }
         catch (InvalidOperationException ex)
         {
@@ -164,7 +193,7 @@ internal sealed class AppController : IDisposable
         }
 
         problem = null;
-        var app = new AppController(session, loop, runs, log, inventory, calibration, overrides)
+        var app = new AppController(session, loop, runs, log, OpenMonitor(runs, loop, log), inventory, calibration, overrides)
         {
             UnexpectedEnd = LastRunEndedBadly(log),
         };
@@ -173,7 +202,142 @@ internal sealed class AppController : IDisposable
         foreach (var check in app.Checks.Where(c => c.Result >= CheckResult.Warning))
             log.Add(LogKind.Warning, $"{check.Title}: {check.Detail}");
         app.UpgradeIfOld();
+        app.Monitor.Warning += message =>
+        {
+            app.Log.Add(LogKind.Warning, message);
+            app.Alert?.Invoke(message);
+        };
+        app.UseFansInMonitor();
+        app.Quiet = QuietSettings.Load(Path.Combine(runs, QuietSettings.FileName));
+        app.Monitor.SessionEnded += ended => app.Log.Add(LogKind.Info, Describe(ended));
+        loop.Sampled += (snapshot, status) =>
+        {
+            app.Monitor.Preset = app.Recommended?.Profile ?? "";
+            app.Monitor.Record(snapshot, status, session.Foreground());
+            app.UpdateQuiet();
+        };
+        // the days since the calibration: now (in the background) and every hour after
+        app._healthTimer = new System.Threading.Timer(_ => app.UpdateHealth(), null, TimeSpan.FromSeconds(20), TimeSpan.FromHours(1));
         return app;
+    }
+
+    /// <summary>A session in one line for the log: "VALORANT: 42 min, GPU 74 °C on average, hotspot up to 88 °C".</summary>
+    private static string Describe(GameSession session)
+    {
+        string Avg(Series series) => session.Stats.TryGetValue(series.Key, out var s) ? $"{s.Avg:0} {series.Unit}" : "–";
+        string Max(Series series) => session.Stats.TryGetValue(series.Key, out var s) ? $"{s.Max:0} {series.Unit}" : "–";
+        return $"{Sessions.Pretty(session.Program)}: {session.Length.TotalMinutes:0} min, GPU {Avg(HistoryRecorder.GpuTemp)} on average, "
+            + $"hotspot up to {Max(HistoryRecorder.GpuHotspot)}, CPU {Avg(HistoryRecorder.CpuTemp)} on average ({session.Preset}).";
+    }
+
+    // ── extra quiet ────────────────────────────────────────────────────────────────────
+
+    public void SaveQuiet(QuietSettings quiet)
+    {
+        Quiet = quiet;
+        quiet.Save(Path.Combine(RunsPath, QuietSettings.FileName));
+        UpdateQuiet();
+    }
+
+    /// <summary>After every step: away or night starts or ends the quiet mode.</summary>
+    private void UpdateQuiet()
+    {
+        string? reason = IsSetUp ? Quiet.Reason(DateTime.Now, UserIdle.For()) : null;
+        if (reason == _quietReason)
+            return;
+        _quietReason = reason;
+        Loop.Quiet = reason;
+        Log.Add(LogKind.Fans, reason switch
+        {
+            "away" => $"Extra quiet: nobody at the PC for {Quiet.AwayMinutes} min. Every fan at its slowest, the ones that can stop off, while it stays cool.",
+            "night" => $"Extra quiet for the night (until {Quiet.NightTo}). Every fan at its slowest, the ones that can stop off, while it stays cool.",
+            _ => "Normal again: the fans follow their curves.",
+        });
+    }
+
+    // ── cooling health ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Works out the cooling health of every finished day since the calibration (at most the last
+    /// 30, as long as minute values are kept) that isn't stored yet. Runs on a timer thread.
+    /// </summary>
+    public void UpdateHealth()
+    {
+        try
+        {
+            if (Recommended is not { } calibration || HealthReference is not { } reference)
+                return;
+            var store = Monitor.Store;
+            var done = store.HealthDays().Where(d => d.Calibration == reference).Select(d => d.Day).ToHashSet();
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            var first = DateOnly.FromDateTime(reference.LocalDateTime.Date);
+            if (today.AddDays(-29) > first)
+                first = today.AddDays(-29);
+            bool any = false;
+            for (var day = first; day < today; day = day.AddDays(1))
+            {
+                if (done.Contains(day))
+                    continue;
+                var from = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue));
+                var result = CoolingHealth.Analyze(calibration, CoolingHealth.Minutes(store, calibration, from, from.AddDays(1)))
+                    ?? new HealthResult(0, 0, null, null); // stored anyway, so an empty day isn't worked out again
+                store.SaveHealth(new HealthDay(day, reference, result));
+                any = true;
+            }
+            if (any)
+                HealthUpdated?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Log.Add(LogKind.Warning, $"Cooling health: {ex.Message}");
+        }
+    }
+
+    /// <summary>The last 7 days as one result (including today so far); null if there isn't enough data yet.</summary>
+    public HealthResult? HealthNow()
+    {
+        if (Recommended is not { } calibration)
+            return null;
+        var to = Loop.Last?.Time ?? DateTimeOffset.Now;
+        return CoolingHealth.Analyze(calibration, CoolingHealth.Minutes(Monitor.Store, calibration, to.AddDays(-7), to));
+    }
+
+    /// <summary>Steady minutes in the last 7 days (to say how far the first answer is).</summary>
+    public int HealthMinutes()
+    {
+        if (Recommended is not { } calibration)
+            return 0;
+        var to = Loop.Last?.Time ?? DateTimeOffset.Now;
+        return CoolingHealth.Minutes(Monitor.Store, calibration, to.AddDays(-7), to).Count;
+    }
+
+    // a broken or locked history file must never stop AutoFantic: then the history stays in memory
+    private static HistoryRecorder OpenMonitor(string runs, FanControlLoop loop, ActivityLog log)
+    {
+        HistoryStore store;
+        try
+        {
+            store = new HistoryStore(Path.Combine(runs, HistoryStore.FileName));
+        }
+        catch (Exception ex)
+        {
+            log.Add(LogKind.Warning, $"The history ({HistoryStore.FileName}) couldn't be opened, so it isn't kept this time: {ex.Message}");
+            store = new HistoryStore(null);
+        }
+        return new HistoryRecorder(store, loop.Keys) { Warnings = WarningSettings.Load(Path.Combine(runs, WarningSettings.FileName)) };
+    }
+
+    /// <summary>The monitor records every fan found; the fan control reads their RPM for it.</summary>
+    private void UseFansInMonitor()
+    {
+        Monitor.UseFans(Inventory?.Groups() ?? []);
+        Loop.Watch(Monitor.SensorIds);
+    }
+
+    public void SaveWarnings(WarningSettings warnings)
+    {
+        Monitor.Warnings = warnings;
+        warnings.Save(Path.Combine(RunsPath, WarningSettings.FileName));
     }
 
     /// <summary>Set when the run before this one ended without handing the fans back (and the watchdog or this start did it): what happened.</summary>
@@ -278,7 +442,7 @@ internal sealed class AppController : IDisposable
     private void Apply()
     {
         if (Effective is { } effective && Inventory is not null)
-            Loop.UseCalibration(effective, FanControlLoop.MinSpinning(effective, Inventory));
+            Loop.UseCalibration(effective, FanControlLoop.MinSpinning(effective, Inventory), FanControlLoop.CanStop(effective, Inventory));
         CurvesChanged?.Invoke();
     }
 
@@ -328,7 +492,8 @@ internal sealed class AppController : IDisposable
             _calibrating.Dispose();
             _calibrating = null;
             if (Effective is { } effective && Inventory is not null)
-                Loop.UseCalibration(effective, FanControlLoop.MinSpinning(effective, Inventory));
+                Loop.UseCalibration(effective, FanControlLoop.MinSpinning(effective, Inventory), FanControlLoop.CanStop(effective, Inventory));
+            UseFansInMonitor();
             UpdatePause();
             Log.Add(outcome.Success ? LogKind.Calibration : LogKind.Warning, outcome.Message);
             CurvesChanged?.Invoke();
@@ -396,6 +561,7 @@ internal sealed class AppController : IDisposable
             Session.RestoreAll();
             _calibrating.Dispose();
             _calibrating = null;
+            UseFansInMonitor();
             UpdatePause();
             Log.Add(outcome.Success ? LogKind.Calibration : LogKind.Warning, outcome.Message);
             CurvesChanged?.Invoke();
@@ -426,7 +592,10 @@ internal sealed class AppController : IDisposable
     public void Dispose()
     {
         _calibrating?.Cancel();
+        _healthTimer?.Dispose();
         Loop.Dispose();
+        Monitor.FinishSession();
+        Monitor.Store.Dispose();
         Session.Dispose();
         Log.Add(LogKind.Info, "AutoFantic exited: the fans are back on BIOS control.");
     }
