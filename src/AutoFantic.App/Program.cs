@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using AutoFantic.Core;
+using AutoFantic.Core.Logging;
 
 namespace AutoFantic.App;
 
@@ -22,6 +23,8 @@ namespace AutoFantic.App;
 /// Options for checking a build without touching the screen (with --simulate):
 ///   --selftest [--seconds 5]        start everything without an icon, run 5 s, exit 0 if it controlled the fans (or, not set up, only watched)
 ///   --selftest-calibration          a whole calibration with the built-in load, as the window starts it (the first one finds the fans too)
+///   --selftest-update releases.json an update the way the window does it, from a local copy of GitHub's list of releases
+///                                   (URL): check, download, install, restart into the new version (which runs --selftest)
 ///   --screenshot file.png [--page overview|monitor|curves|calibration|log|settings] [--height 2000] [--full]   render the window off-screen to a PNG
 /// </summary>
 internal static class Program
@@ -42,9 +45,13 @@ internal static class Program
     private static int RunApp(string[] args)
     {
         bool simulate = args.Contains("--simulate");
-        bool selfTest = args.Contains("--selftest") || args.Contains("--selftest-calibration");
+        bool selfTest = args.Contains("--selftest") || args.Contains("--selftest-calibration") || args.Contains("--selftest-update");
         string? screenshot = Option(args, "--screenshot");
         bool quiet = selfTest || screenshot is not null;
+
+        // started by an update: the old version hands the fans back and ends first
+        if (int.TryParse(Option(args, AppController.WaitForArgument), out int previous))
+            WaitForExit(previous);
 
         if (!simulate && !IsAdministrator())
         {
@@ -93,6 +100,13 @@ internal static class Program
 
         using (app)
         {
+            app.Appearance.Apply(); // light, dark or like Windows, as chosen in Settings
+            if (Option(args, AppController.UpdatedFromArgument) is { } from)
+            {
+                app.UpdatedFrom = from;
+                app.Log.Add(LogKind.Info, $"Updated from {from} to {AppVersion.Text}.");
+            }
+
             // whatever happens, the fans go back to the BIOS
             AppDomain.CurrentDomain.ProcessExit += (_, _) => app.Loop.Dispose();
             wpf.DispatcherUnhandledException += (_, e) =>
@@ -112,6 +126,8 @@ internal static class Program
                 return Screenshot(app, screenshot, Option(args, "--page") ?? "overview", double.TryParse(Option(args, "--height"), out double h) ? h : null, args.Contains("--full"));
 
             Watchdog.Launch(simulate);
+            if (!quiet)
+                app.StartUpdateChecks();
 
             using var tray = new TrayIcon(app, quiet: selfTest);
             if (args.Contains("--selftest-calibration"))
@@ -122,6 +138,30 @@ internal static class Program
                     After(TimeSpan.FromSeconds(3), () =>
                         wpf.Shutdown(outcome.Success && !app.Calibrating && app.Loop.Last is { State: Core.Control.LoopState.Running } ? 0 : 4)));
                 wpf.Dispatcher.BeginInvoke(() => app.StartCalibration(22, builtInLoad: true));
+            }
+            else if (simulate && Option(args, "--selftest-update") is { } releases)
+            {
+                wpf.Dispatcher.BeginInvoke(async () =>
+                {
+                    int code = 5; // no newer version found
+                    try
+                    {
+                        if (await app.CheckForUpdateAsync(releases) is { } release)
+                        {
+                            await app.InstallUpdateAsync(release, null);
+                            app.StartNewVersion("--selftest", "--seconds", "5");
+                            code = 0;
+                        }
+                        else if (app.UpdateProblem is { } problem)
+                            app.Log.Add(LogKind.Warning, $"Update self-test: {problem}");
+                    }
+                    catch (Exception ex)
+                    {
+                        app.Log.Add(LogKind.Warning, $"Update self-test: {ex}");
+                        code = 6;
+                    }
+                    wpf.Shutdown(code);
+                });
             }
             else if (selfTest)
             {
@@ -192,6 +232,20 @@ internal static class Program
             action();
         };
         timer.Start();
+    }
+
+    /// <summary>Waits (at most a minute) until the process with that id has ended.</summary>
+    private static void WaitForExit(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            process.WaitForExit(TimeSpan.FromMinutes(1));
+        }
+        catch (ArgumentException)
+        {
+            // already gone
+        }
     }
 
     private static string? Option(string[] args, string name)

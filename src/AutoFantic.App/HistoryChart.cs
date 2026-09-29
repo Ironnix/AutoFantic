@@ -28,6 +28,7 @@ internal sealed class HistoryChart : FrameworkElement
     private string _unit = "";
     private double? _fixedMin, _fixedMax;
     private double? _hoverX;
+    private string _format = "0"; // one decimal when the scale is finer than 1 (the cooling health's few °C)
 
     public HistoryChart()
     {
@@ -42,6 +43,7 @@ internal sealed class HistoryChart : FrameworkElement
             InvalidateVisual();
         };
         Cursor = System.Windows.Input.Cursors.Cross;
+        ThemeRedraw.Follow(this);
     }
 
     /// <param name="min">Fixed bottom of the scale (0 for power and fans); null = from the data.</param>
@@ -76,6 +78,7 @@ internal sealed class HistoryChart : FrameworkElement
         // the scale: round steps, a little room above and below
         double low = _fixedMin ?? all.Min(p => p.Min), high = _fixedMax ?? all.Max(p => p.Max);
         double step = NiceStep((high - low) / 4);
+        _format = step < 1 ? "0.0" : "0";
         double bottom = _fixedMin ?? Math.Floor((low - step * 0.3) / step) * step;
         double top = _fixedMax ?? Math.Ceiling((high + step * 0.3) / step) * step;
         if (top <= bottom)
@@ -87,7 +90,7 @@ internal sealed class HistoryChart : FrameworkElement
         for (double v = bottom; v <= top + step / 1000; v += step)
         {
             dc.DrawLine(grid, new Point(plot.Left, Y(v)), new Point(plot.Right, Y(v)));
-            Label(dc, $"{v:0} {_unit}", new Point(plot.Left - 6, Y(v)), text, right: true);
+            Label(dc, $"{Value(v)} {_unit}", new Point(plot.Left - 6, Y(v)), text, right: true);
         }
         foreach (var (time, label) in TimeTicks())
         {
@@ -106,8 +109,8 @@ internal sealed class HistoryChart : FrameworkElement
         double legendX = plot.Left;
         foreach (var line in _lines)
         {
-            dc.DrawRoundedRectangle(new SolidColorBrush(line.Color), null, new Rect(legendX, 8, 12, 12), 3, 3);
-            string last = line.Points.Count > 0 ? $" {line.Points[^1].Avg:0} {_unit}" : "";
+            dc.DrawRoundedRectangle(new SolidColorBrush(SeriesColors.For(line.Color, this)), null, new Rect(legendX, 8, 12, 12), 3, 3);
+            string last = line.Points.Count > 0 ? $" {Value(line.Points[^1].Avg)} {_unit}" : "";
             var ft = Text(line.Name + last, primary);
             dc.DrawText(ft, new Point(legendX + 17, 14 - ft.Height / 2));
             legendX += 17 + ft.Width + 18;
@@ -121,8 +124,9 @@ internal sealed class HistoryChart : FrameworkElement
     {
         if (line.Points.Count == 0)
             return;
-        var brush = new SolidColorBrush(line.Color);
-        var band = new SolidColorBrush(Color.FromArgb(0x38, line.Color.R, line.Color.G, line.Color.B));
+        var color = SeriesColors.For(line.Color, this);
+        var brush = new SolidColorBrush(color);
+        var band = new SolidColorBrush(Color.FromArgb(0x38, color.R, color.G, color.B));
         var pen = new Pen(brush, 1.8) { LineJoin = PenLineJoin.Round };
 
         foreach (var piece in Pieces(line.Points))
@@ -180,8 +184,8 @@ internal sealed class HistoryChart : FrameworkElement
             var nearest = line.Points.MinBy(p => Math.Abs((p.Time - time).TotalSeconds));
             if (Math.Abs((nearest.Time - time).TotalSeconds) > span / 50 + 10)
                 continue;
-            string range = nearest.Max - nearest.Min > 0.5 ? $"  ({nearest.Min:0}–{nearest.Max:0})" : "";
-            rows.Add((line.Color, $"{line.Name} {nearest.Avg:0} {_unit}{range}"));
+            string range = nearest.Max - nearest.Min > 0.5 ? $"  ({Value(nearest.Min)}–{Value(nearest.Max)})" : "";
+            rows.Add((SeriesColors.For(line.Color, this), $"{line.Name} {Value(nearest.Avg)} {_unit}{range}"));
         }
         if (rows.Count == 0)
             return;
@@ -208,11 +212,23 @@ internal sealed class HistoryChart : FrameworkElement
         }
     }
 
-    /// <summary>About five labels along the time axis, at round times.</summary>
+    /// <summary>About five labels along the time axis, at round times; months for 100 days and more.</summary>
     private IEnumerable<(DateTimeOffset, string)> TimeTicks()
     {
         double span = (_to - _from).TotalSeconds;
-        double[] steps = [60, 300, 600, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400];
+        if (span >= 100 * 86400)
+        {
+            // the 1st of every month, or of every 2nd or 3rd (Jan, Mar, May …), with the year at January and at the start
+            int every = span <= 200 * 86400 ? 1 : span <= 400 * 86400 ? 2 : 3;
+            var start = _from.LocalDateTime;
+            var month = new DateTime(start.Year, start.Month, 1).AddMonths(1);
+            while ((month.Month - 1) % every != 0)
+                month = month.AddMonths(1);
+            for (bool opening = true; month <= _to.LocalDateTime; month = month.AddMonths(every), opening = false)
+                yield return (new DateTimeOffset(month), month.ToString(opening || month.Month == 1 ? "MMM yyyy" : "MMM", CultureInfo.InvariantCulture));
+            yield break;
+        }
+        double[] steps = [60, 300, 600, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400, 14 * 86400];
         double step = steps.FirstOrDefault(s => span / s <= 6, steps[^1]);
         string format = step >= 86400 ? "dd.MM." : "HH:mm";
         var local = _from.ToLocalTime();
@@ -223,6 +239,12 @@ internal sealed class HistoryChart : FrameworkElement
             var time = DateTimeOffset.FromUnixTimeSeconds((long)t);
             yield return (time, time.ToLocalTime().ToString(format, CultureInfo.InvariantCulture));
         }
+    }
+
+    private string Value(double v)
+    {
+        string text = v.ToString(_format, CultureInfo.CurrentCulture);
+        return text.StartsWith('-') && text.Trim('-', '0', '.', ',').Length == 0 ? text[1..] : text; // not "-0"
     }
 
     private static double NiceStep(double raw)

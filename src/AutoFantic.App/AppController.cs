@@ -7,6 +7,7 @@ using AutoFantic.Core.Logging;
 using AutoFantic.Core.Monitoring;
 using AutoFantic.Core.Reports;
 using AutoFantic.Core.Simulation;
+using AutoFantic.Core.Updates;
 
 namespace AutoFantic.App;
 
@@ -22,7 +23,8 @@ internal sealed class AppController : IDisposable
     private CancellationTokenSource? _calibrating;
     private bool _userPaused, _sleeping;
     private string? _quietReason;
-    private System.Threading.Timer? _healthTimer;
+    private System.Threading.Timer? _healthTimer, _updateTimer;
+    private Version? _loggedUpdate;
 
     private AppController(FanSession session, FanControlLoop loop, string runs, ActivityLog log, HistoryRecorder monitor, FanInventory? inventory, CalibrationResult? recommended, CurveOverrides overrides)
     {
@@ -209,6 +211,9 @@ internal sealed class AppController : IDisposable
         };
         app.UseFansInMonitor();
         app.Quiet = QuietSettings.Load(Path.Combine(runs, QuietSettings.FileName));
+        app.Updates = UpdateSettings.Load(Path.Combine(runs, UpdateSettings.FileName));
+        app.Appearance = AppearanceSettings.Load(Path.Combine(runs, AppearanceSettings.FileName));
+        UpdateInstaller.CleanUp(AppContext.BaseDirectory, app.UpdateWork); // what an update left behind
         app.Monitor.SessionEnded += ended => app.Log.Add(LogKind.Info, Describe(ended));
         loop.Sampled += (snapshot, status) =>
         {
@@ -254,6 +259,125 @@ internal sealed class AppController : IDisposable
             _ => "Normal again: the fans follow their curves.",
         });
     }
+
+    // ── appearance ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>Light, dark or like Windows.</summary>
+    public AppearanceSettings Appearance { get; private set; } = new();
+
+    public void SaveAppearance(AppearanceSettings appearance)
+    {
+        Appearance = appearance;
+        appearance.Save(Path.Combine(RunsPath, AppearanceSettings.FileName));
+        appearance.Apply();
+    }
+
+    // ── updates ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Whether AutoFantic checks for a new version by itself.</summary>
+    public UpdateSettings Updates { get; private set; } = new();
+
+    /// <summary>A newer version on GitHub, from the last check that worked; null if there is none.</summary>
+    public Release? UpdateAvailable { get; private set; }
+
+    /// <summary>When the last check ended; null before the first.</summary>
+    public DateTimeOffset? UpdateChecked { get; private set; }
+
+    /// <summary>Why the last check failed (no internet, GitHub didn't answer); null if it worked.</summary>
+    public string? UpdateProblem { get; private set; }
+
+    /// <summary>The version this one was updated from, right after an update; null otherwise.</summary>
+    public string? UpdatedFrom { get; set; }
+
+    /// <summary>A check ended. Raised on any thread.</summary>
+    public event Action? UpdateStateChanged;
+
+    public void SaveUpdateSettings(UpdateSettings updates)
+    {
+        Updates = updates;
+        updates.Save(Path.Combine(RunsPath, UpdateSettings.FileName));
+    }
+
+    /// <summary>Checks a minute after the start and then once a day, while <see cref="UpdateSettings.CheckDaily"/> is on.</summary>
+    public void StartUpdateChecks() =>
+        _updateTimer ??= new System.Threading.Timer(_ =>
+        {
+            if (Updates.CheckDaily)
+                _ = CheckForUpdateAsync();
+        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromDays(1));
+
+    /// <summary>Asks GitHub for a newer version; the result is also in <see cref="UpdateAvailable"/>.</summary>
+    /// <param name="url">GitHub's list of releases (another one only for the self-test).</param>
+    public async Task<Release?> CheckForUpdateAsync(string url = UpdateCheck.ReleasesUrl)
+    {
+        try
+        {
+            UpdateAvailable = UpdateCheck.Current is { } current
+                ? await UpdateCheck.NewerAsync(current, url)
+                : throw new InvalidOperationException("this build has no version number");
+            UpdateProblem = null;
+            if (UpdateAvailable is { } found && found.Version != _loggedUpdate)
+            {
+                _loggedUpdate = found.Version;
+                Log.Add(LogKind.Info, $"{found.Name} is available (you have {AppVersion.Text}): Settings → Updates.");
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateProblem = ex is TaskCanceledException ? "GitHub didn't answer in time." : $"The check didn't work ({ex.Message}).";
+        }
+        UpdateChecked = DateTimeOffset.Now;
+        UpdateStateChanged?.Invoke();
+        return UpdateAvailable;
+    }
+
+    /// <summary>
+    /// Downloads <paramref name="release"/>, checks it and puts it in place of this program; then
+    /// <see cref="StartNewVersion"/> and exit. If it fails (the message says why), nothing changed.
+    /// </summary>
+    public async Task InstallUpdateAsync(Release release, IProgress<double>? progress)
+    {
+        if (Calibrating)
+            throw new InvalidOperationException("A calibration is running: finish or stop it first.");
+        if (!UpdateInstaller.CanInstallInto(AppContext.BaseDirectory))
+            throw new InvalidOperationException("This AutoFantic runs from the compiler's output, not a published build: build it again instead.");
+        try
+        {
+            Log.Add(LogKind.Info, $"Updating to {release.Version}: downloading {release.ZipSize / 1e6:0} MB from GitHub …");
+            string files = await UpdateInstaller.DownloadAsync(release, UpdateWork, progress);
+            UpdateInstaller.Install(files, AppContext.BaseDirectory);
+        }
+        catch (Exception ex)
+        {
+            Log.Add(LogKind.Warning, $"The update to {release.Version} didn't work: {ex.Message} AutoFantic {AppVersion.Text} keeps running.");
+            throw;
+        }
+        Log.Add(LogKind.Info, $"{release.Name} is installed. AutoFantic restarts into it; the BIOS has the fans for those few seconds.");
+    }
+
+    /// <summary>
+    /// Starts the AutoFantic.exe that is in place now (the new version). It waits until this one has
+    /// ended and handed the fans back, so the caller exits right after. Admin rights carry over.
+    /// </summary>
+    public void StartNewVersion(params string[] args)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, UpdateInstaller.ExeName)) { UseShellExecute = false };
+        start.ArgumentList.Add(WaitForArgument);
+        start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        start.ArgumentList.Add(UpdatedFromArgument);
+        start.ArgumentList.Add(AppVersion.Text);
+        if (Session is SimulatedPc)
+            start.ArgumentList.Add("--simulate");
+        foreach (string arg in args)
+            start.ArgumentList.Add(arg);
+        System.Diagnostics.Process.Start(start)?.Dispose();
+    }
+
+    public const string WaitForArgument = "--wait-for";
+    public const string UpdatedFromArgument = "--updated-from";
+
+    /// <summary>Where a download is unpacked; removed at the next start.</summary>
+    private string UpdateWork => Path.Combine(RunsPath, "update");
 
     // ── cooling health ─────────────────────────────────────────────────────────────────
 
@@ -593,6 +717,7 @@ internal sealed class AppController : IDisposable
     {
         _calibrating?.Cancel();
         _healthTimer?.Dispose();
+        _updateTimer?.Dispose();
         Loop.Dispose();
         Monitor.FinishSession();
         Monitor.Store.Dispose();

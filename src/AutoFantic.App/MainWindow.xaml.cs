@@ -14,6 +14,7 @@ using AutoFantic.Core.Hardware;
 using AutoFantic.Core.Logging;
 using AutoFantic.Core.Monitoring;
 using AutoFantic.Core.Reports;
+using AutoFantic.Core.Updates;
 using Color = System.Windows.Media.Color;
 using Orientation = System.Windows.Controls.Orientation;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
@@ -62,11 +63,13 @@ public partial class MainWindow : Window
     [
         ("10 min", TimeSpan.FromMinutes(10)), ("1 hour", TimeSpan.FromHours(1)), ("6 hours", TimeSpan.FromHours(6)),
         ("24 hours", TimeSpan.FromDays(1)), ("7 days", TimeSpan.FromDays(7)), ("30 days", TimeSpan.FromDays(30)),
+        ("3 months", TimeSpan.FromDays(91)), ("1 year", TimeSpan.FromDays(365)), // hourly values, kept for 400 days
     ];
     private const int MonitorEverySeconds = 5;
 
-    private static readonly Color HotspotColor = Color.FromRgb(0xe3, 0x49, 0x48);
-    private static readonly Color MemoryColor = Color.FromRgb(0x4a, 0x3a, 0xa7);
+    // the palette's next slots after CPU (blue) and GPU (orange): red and violet were too close to orange and blue
+    private static readonly Color HotspotColor = Color.FromRgb(0x1b, 0xaf, 0x7a);
+    private static readonly Color MemoryColor = Color.FromRgb(0xed, 0xa1, 0x00);
 
     private readonly AppController _app;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -76,9 +79,16 @@ public partial class MainWindow : Window
     private readonly Queue<string> _log = new();
     private IReadOnlyList<string> _groupsShown = [];
     private bool _wasSetUp;
-    private readonly List<(ToggleButton Button, TimeSpan Span)> _ranges = [];
     private TimeSpan _range = TimeSpan.FromHours(1);
+
+    // the cooling health chart's time ranges: per day up to a month, per week beyond
+    private static readonly (string Label, TimeSpan Span)[] HealthRanges =
+        [("30 days", TimeSpan.FromDays(30)), ("3 months", TimeSpan.FromDays(91)), ("1 year", TimeSpan.FromDays(365))];
+    private TimeSpan _healthRange = TimeSpan.FromDays(91);
     private int _monitorTick;
+
+    /// <summary>What the Updates card shows while checking or downloading; null otherwise.</summary>
+    private string? _updating;
     private int _selected;
     private bool _building;
 
@@ -86,6 +96,7 @@ public partial class MainWindow : Window
     {
         _app = app;
         InitializeComponent();
+        SetResourceReference(ThemeTextProperty, "TextFillColorPrimaryBrush"); // notices a switch between light and dark
 
         NavOverview.Checked += (_, _) => ShowOnly(OverviewPage);
         NavMonitor.Checked += (_, _) =>
@@ -148,13 +159,13 @@ public partial class MainWindow : Window
             BuildWarnings();
         };
 
-        AutostartBox.IsChecked = Autostart.IsEnabled();
+        ShowAutostart();
         AutostartBox.Click += (_, _) =>
         {
             bool ok = AutostartBox.IsChecked == true ? Autostart.Enable() : Autostart.Disable();
             if (!ok)
                 MessageBox.Show(this, "Could not change the Windows start task.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
-            AutostartBox.IsChecked = Autostart.IsEnabled();
+            ShowAutostart();
         };
         OpenPage.Click += (_, _) => OpenInExplorer(_app.PagePath);
         OpenFolder.Click += (_, _) => OpenInExplorer(_app.RunsPath);
@@ -167,6 +178,28 @@ public partial class MainWindow : Window
         DataPath.Text = _app.RunsPath + (File.Exists(Path.Combine(_app.RunsPath, DataFolder.MigratedNote))
             ? "  (copied from runs\\)"
             : "");
+        ThemeBox.SelectedIndex = (int)_app.Appearance.Theme; // the items are in the order of Theme
+        ThemeBox.SelectionChanged += (_, _) =>
+        {
+            if (ThemeBox.SelectedIndex >= 0)
+                _app.SaveAppearance(new AppearanceSettings((Theme)ThemeBox.SelectedIndex));
+        };
+        UpdateDailyBox.IsChecked = _app.Updates.CheckDaily;
+        UpdateDailyBox.Click += (_, _) => _app.SaveUpdateSettings(new UpdateSettings(UpdateDailyBox.IsChecked == true));
+        UpdateCheckButton.Click += async (_, _) =>
+        {
+            _updating = "Checking …";
+            ShowUpdates();
+            await _app.CheckForUpdateAsync();
+            _updating = null;
+            ShowUpdates();
+        };
+        UpdateInstall.Click += async (_, _) => await InstallUpdate();
+        UpdateNotes.Click += (_, _) =>
+        {
+            if (_app.UpdateAvailable is { PageUrl.Length: > 0 } release)
+                OpenInExplorer(release.PageUrl);
+        };
         FindFansButton.Click += (_, _) => FindFans();
         SensorsButton.Click += (_, _) => ShowSensors();
         ConsoleButton.Click += (_, _) => OpenConsole();
@@ -177,9 +210,11 @@ public partial class MainWindow : Window
         _app.CalibrationEnded += OnCalibrationEnded;
         _app.Log.Added += OnLogAdded;
         _app.HealthUpdated += OnHealthUpdated;
+        _app.UpdateStateChanged += OnUpdateStateChanged;
         Closed += (_, _) =>
         {
             _app.HealthUpdated -= OnHealthUpdated;
+            _app.UpdateStateChanged -= OnUpdateStateChanged;
             _timer.Stop();
             _app.CurvesChanged -= OnCurvesChanged;
             _app.CalibrationProgress -= OnCalibrationProgress;
@@ -199,6 +234,7 @@ public partial class MainWindow : Window
         BuildWarnings();
         BuildQuiet();
         UpdateCalibrationState();
+        ShowUpdates();
 
         _timer.Tick += (_, _) =>
         {
@@ -463,8 +499,9 @@ public partial class MainWindow : Window
         CurveTitle.Text = effective.Name;
         CurveSubtitle.Text = $"Follows the {CalibrationInsights.FollowsName(effective.Follows)} · {CalibrationReport.Role(effective)} · "
             + (custom ? "your own curve" : "the recommended curve");
-        LegendUse.Fill = new SolidColorBrush(color);
-        LegendRecommended.Stroke = new SolidColorBrush(Color.FromArgb(0x90, color.R, color.G, color.B));
+        LegendUse.Fill = SeriesBrush(color);
+        LegendRecommended.Stroke = SeriesBrush(color);
+        LegendRecommended.Opacity = 0x90 / 255.0;
 
         bool canStop = _app.CanStop(_selected), allows = _app.AllowsStop(_selected);
         double offAt = CurveController.OffTemperature(effective);
@@ -781,7 +818,7 @@ public partial class MainWindow : Window
         var track = new Grid { Height = 8, VerticalAlignment = VerticalAlignment.Center };
         track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.001, value / max), GridUnitType.Star) });
         track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(0.001, 1 - value / max), GridUnitType.Star) });
-        track.Children.Add(new Border { Background = new SolidColorBrush(color), CornerRadius = new CornerRadius(4) });
+        track.Children.Add(new Border { Background = SeriesBrush(color), CornerRadius = new CornerRadius(4) });
         line.Children.Add(new TextBlock { Text = label, Style = (Style)FindResource("Caption"), VerticalAlignment = VerticalAlignment.Center });
         Place(line, track, 1);
         Place(line, new TextBlock { Text = $"+{value:0.0} °C", HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, FontSize = 13 }, 2);
@@ -836,7 +873,23 @@ public partial class MainWindow : Window
 
     private void BuildRanges()
     {
-        foreach (var (label, span) in Ranges)
+        RangeChoices(RangeButtons, Ranges, _range, span =>
+        {
+            _range = span;
+            RefreshMonitor();
+        });
+        RangeChoices(HealthRangeButtons, HealthRanges, _healthRange, span =>
+        {
+            _healthRange = span;
+            BuildHealth();
+        });
+    }
+
+    /// <summary>A row of time range buttons: the one in use is checked; a click checks another and calls <paramref name="chosen"/>.</summary>
+    private void RangeChoices(System.Windows.Controls.Panel panel, (string Label, TimeSpan Span)[] ranges, TimeSpan selected, Action<TimeSpan> chosen)
+    {
+        var buttons = new List<(ToggleButton Button, TimeSpan Span)>();
+        foreach (var (label, span) in ranges)
         {
             var button = new ToggleButton
             {
@@ -844,18 +897,17 @@ public partial class MainWindow : Window
                 Padding = new Thickness(14, 6, 14, 6),
                 Margin = new Thickness(0, 0, 8, 8),
                 Content = new TextBlock { Text = label, FontSize = 14 },
-                IsChecked = span == _range,
+                IsChecked = span == selected,
             };
-            var chosen = span;
+            var mine = span;
             button.Click += (_, _) =>
             {
-                _range = chosen;
-                foreach (var (b, s) in _ranges)
-                    b.IsChecked = s == chosen;
-                RefreshMonitor();
+                foreach (var (b, s) in buttons)
+                    b.IsChecked = s == mine;
+                chosen(mine);
             };
-            _ranges.Add((button, span));
-            RangeButtons.Children.Add(button);
+            buttons.Add((button, span));
+            panel.Children.Add(button);
         }
     }
 
@@ -895,7 +947,8 @@ public partial class MainWindow : Window
         ValueRows.ColumnDefinitions.Clear();
         foreach (double width in new[] { 2.4, 1, 1, 1, 1 })
             ValueRows.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width, GridUnitType.Star) });
-        ValuesIntro.Text = $"The last {Ranges.First(r => r.Span == _range).Label}. Hover over a chart to see its values at that time.";
+        string range = Ranges.First(r => r.Span == _range).Label;
+        ValuesIntro.Text = $"The last {(range.StartsWith("1 ", StringComparison.Ordinal) ? range[2..] : range)}. Hover over a chart to see its values at that time.";
 
         void Row(int row, string[] cells, bool header)
         {
@@ -1153,70 +1206,99 @@ public partial class MainWindow : Window
     private void BuildHealth()
     {
         HealthCalibrate.Visibility = Visibility.Collapsed;
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var changes = CoolingHealth.SinceCalibration(_app.Monitor.Store.HealthDays());
+        ShowHealthChart(changes, today); // every day kept, also from earlier calibrations
+
         if (_app.Recommended is not { } calibration || _app.HealthReference is not { } reference)
         {
             HealthDot.Fill = Paused;
             HealthTitle.Text = "Calibrate first";
             HealthDetail.Text = "Cooling health compares with the calibration.";
+            HealthCompareIntro.Text = "";
+            HealthCompareRows.Children.Clear();
             HealthRows.Children.Clear();
-            HealthChart.Show([], DateTimeOffset.Now.AddDays(-30), DateTimeOffset.Now, "°C");
             return;
         }
 
         var now = _app.HealthNow();
-        var today = DateOnly.FromDateTime(DateTime.Now);
-        var days = _app.Monitor.Store.HealthDays().Where(d => d.Calibration == reference && d.Result.Minutes > 0).ToList();
-        var trend = CoolingHealth.Trend(days, reference, today);
+        var rise = CoolingHealth.Rise(calibration);
+        var comparisons = CoolingHealth.Compare(changes, reference, today, rise);
+        var first = comparisons.FirstOrDefault(c => c.Label == CoolingHealth.AfterCalibration);
         var (topCpu, topGpu) = CoolingHealth.FullLoad(calibration);
         static string Signed(double v) => v.ToString("+0.0;-0.0;0.0", CultureInfo.CurrentCulture);
+        static string Change(double? change, double? percent) => change is not { } c ? "–"
+            : $"{Signed(c)} °C" + (percent is { } p ? $" ({Signed(p)} %)" : "");
 
-        if (now is null)
+        if (first is null && now is null)
         {
             HealthDot.Fill = SetUp;
             HealthTitle.Text = "Collecting data";
             HealthDetail.Text = $"{_app.HealthMinutes()} of {CoolingHealth.MinMinutes} steady minutes in the last 7 days. Just use the PC as usual; a game helps.";
         }
-        else if (trend is not { } t)
+        else if (first is null)
         {
             int since = Math.Max(0, today.DayNumber - DateOnly.FromDateTime(reference.LocalDateTime.Date).DayNumber);
             HealthDot.Fill = SetUp;
             HealthTitle.Text = "Learning what normal looks like";
-            HealthDetail.Text = $"The first week after the calibration is the baseline ({Math.Min(since, 7)} of 7 days). The numbers below already count.";
+            HealthDetail.Text = $"The first week after the calibration is what's normal for this PC ({Math.Min(since, 7)} of 7 days); the comparison with it starts a week later.";
         }
         else
         {
-            double worst = Math.Max(t.CpuChange ?? 0, t.GpuChange ?? 0);
-            string changes = $"At full load compared with the first week: CPU {(t.CpuChange is { } c ? Signed(c) + " °C" : "–")}, GPU {(t.GpuChange is { } g ? Signed(g) + " °C" : "–")}.";
+            double worst = Math.Max(first.Cpu ?? 0, first.Gpu ?? 0);
+            string detail = $"At full load, compared with the first week after the calibration: CPU {Change(first.Cpu, first.CpuPercent)}, GPU {Change(first.Gpu, first.GpuPercent)}.";
             (HealthDot.Fill, HealthTitle.Text, HealthDetail.Text) = worst < CoolingHealth.Fine
-                ? (Running, "Cooling as good as after the calibration", changes)
+                ? (Running, "Cooling as good as after the calibration", detail)
                 : worst < CoolingHealth.Clean
-                ? (Attention, "A bit warmer than after the calibration", changes + " Check the dust filters when you get to it.")
-                : (Problem, "Clearly warmer than after the calibration", changes + " Clean the dust filters, fans and heatsinks, then calibrate again.");
+                ? (Attention, "A bit warmer than after the calibration", detail + " Check the dust filters when you get to it.")
+                : (Problem, "Clearly warmer than after the calibration", detail + " Clean the dust filters, fans and heatsinks, then calibrate again.");
             HealthCalibrate.Visibility = worst >= CoolingHealth.Fine ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        string Extra(double? extra, double? change, string part) => extra is not { } e
-            ? $"not enough {part} load yet"
-            : $"{Signed(e)} °C than expected" + (change is { } ch ? $"  ·  {Signed(ch)} °C since the first week" : "");
+        // the last 7 days against earlier weeks, in °C and as a share of the rise above the room
+        var rises = new List<string>();
+        if (rise.Cpu is { } cpuRise)
+            rises.Add($"the CPU {cpuRise:0} °C");
+        if (rise.Gpu is { } gpuRise)
+            rises.Add($"the GPU {gpuRise:0} °C");
+        HealthCompareIntro.Text = "The last 7 days against earlier weeks, at the same power and fan speeds (+ = warmer now)."
+            + (rises.Count > 0 ? $" The % is how much worse the cooling works: at full load {string.Join(" and ", rises)} above the room, so 1 °C more on 50 °C is 2 %." : "");
+        FillTable(HealthCompareRows, [2.2, 1.6, 1.6],
+            ["", $"CPU at full load ({topCpu:0} W)", $"GPU at full load ({topGpu:0} W)"],
+            comparisons.Select(c => new[] { c.Label, Change(c.Cpu, c.CpuPercent), Change(c.Gpu, c.GpuPercent) }),
+            "Nothing to compare with yet: that needs a week of use, and the first comparison with the calibration comes a week after it.");
+
+        string Extra(double? extra, string part) => extra is not { } e ? $"not enough {part} load yet" : $"{Signed(e)} °C than the model expects";
         FillTable(HealthRows, [1.6, 3],
             ["", ""],
             now is null ? [] :
             [
                 ["Room", $"about {calibration.Ambient + now.RoomShift:0} °C ({Signed(now.RoomShift)} °C against the {calibration.Ambient:0} °C given at the calibration)"],
-                [$"CPU at full load ({topCpu:0} W)", Extra(now.CpuExtra, trend?.CpuChange, "CPU")],
-                [$"GPU at full load ({topGpu:0} W)", Extra(now.GpuExtra, trend?.GpuChange, "GPU")],
+                [$"CPU at full load ({topCpu:0} W)", Extra(now.CpuExtra, "CPU")],
+                [$"GPU at full load ({topGpu:0} W)", Extra(now.GpuExtra, "GPU")],
                 ["Based on", $"{now.Minutes} steady minutes"],
             ],
             "Nothing to show yet.");
+    }
 
-        static HistoryPoint P(HealthDay d, double v) => new(new DateTimeOffset(d.Day.ToDateTime(new TimeOnly(12, 0))), v, v, v);
-        var from = days.Count > 0 ? new DateTimeOffset(days[0].Day.ToDateTime(TimeOnly.MinValue)) : DateTimeOffset.Now.AddDays(-30);
+    /// <summary>
+    /// The chart of every day (per week for longer ranges) against the first week after its
+    /// calibration: 0 = as good as then; a new calibration starts again at 0.
+    /// </summary>
+    private void ShowHealthChart(IReadOnlyList<DayChange> changes, DateOnly today)
+    {
+        bool weekly = _healthRange > TimeSpan.FromDays(45);
+        var to = new DateTimeOffset(today.AddDays(1).ToDateTime(TimeOnly.MinValue));
+        var from = to - _healthRange;
+        var shown = changes.Where(c => c.Day >= DateOnly.FromDateTime(from.LocalDateTime)).ToList();
+        HealthChartIntro.Text = (weekly ? "Per week (the band: its coolest and warmest day)" : "Per day")
+            + ": how much warmer CPU and GPU run at full load than in the first week after their calibration (0 = as good as then), and the room against the calibration. A new calibration starts again at 0.";
         HealthChart.Show(
         [
-            new ChartLine("CPU", LiveChart.CpuColor, [.. days.Where(d => d.Result.CpuExtra is not null).Select(d => P(d, d.Result.CpuExtra!.Value))]),
-            new ChartLine("GPU", LiveChart.GpuColor, [.. days.Where(d => d.Result.GpuExtra is not null).Select(d => P(d, d.Result.GpuExtra!.Value))]),
-            new ChartLine("room vs. calibration", Color.FromRgb(0x8a, 0x89, 0x84), [.. days.Select(d => P(d, d.Result.RoomShift))]),
-        ], from, new DateTimeOffset(today.AddDays(1).ToDateTime(TimeOnly.MinValue)), "°C");
+            new ChartLine("CPU", LiveChart.CpuColor, CoolingHealth.Points(shown, c => c.Cpu, weekly)),
+            new ChartLine("GPU", LiveChart.GpuColor, CoolingHealth.Points(shown, c => c.Gpu, weekly)),
+            new ChartLine("room", Color.FromRgb(0x8a, 0x89, 0x84), CoolingHealth.Points(shown, c => c.RoomShift, weekly)),
+        ], from, to, "°C");
     }
 
     // ── activity ───────────────────────────────────────────────────────────────────────
@@ -1280,6 +1362,75 @@ public partial class MainWindow : Window
         OpenPage.IsEnabled = File.Exists(_app.PagePath);
     }
 
+    /// <summary>
+    /// "Start with Windows", and a hint if the task starts another copy (an older one, before
+    /// AutoFantic was unpacked somewhere else): that copy wouldn't get this one's updates.
+    /// </summary>
+    private void ShowAutostart()
+    {
+        AutostartBox.IsChecked = Autostart.IsEnabled();
+        AutostartNote.Text = AutostartBox.IsChecked == true && Autostart.OtherCopy() is { } other
+            ? $"⚠ It starts another copy: {other}. Switch it off and on again to start this one."
+            : "Starts when you log in, without an admin prompt.";
+    }
+
+    private void OnUpdateStateChanged() => Dispatcher.BeginInvoke(ShowUpdates);
+
+    /// <summary>The Updates card: this version, what the last check found, and the buttons that fit.</summary>
+    private void ShowUpdates()
+    {
+        var release = _app.UpdateAvailable;
+        UpdateStatus.Text = _updating
+            ?? (release is not null
+                ? $"{release.Name} is available{(release.Published is { } p ? $" (from {p.LocalDateTime:dd.MM.yyyy})" : "")}; you have {AppVersion.Text}. "
+                  + $"Updating downloads it ({release.ZipSize / 1e6:0} MB), closes AutoFantic for a few seconds (the BIOS keeps the fans) and starts the new version. Your data stays."
+                : _app.UpdateProblem is { } problem ? $"You have {AppVersion.Text}. {problem}"
+                : _app.UpdateChecked is { } at ? $"You have {AppVersion.Text}, the newest version (checked at {at.LocalDateTime:HH:mm})."
+                : $"You have {AppVersion.Text}.");
+        UpdateInstall.Content = release is null ? "" : $"Update to {release.Version}";
+        UpdateInstall.Visibility = UpdateNotes.Visibility = release is not null ? Visibility.Visible : Visibility.Collapsed;
+        UpdateInstall.IsEnabled = UpdateCheckButton.IsEnabled = _updating is null;
+    }
+
+    /// <summary>Downloads and installs the new version, then AutoFantic restarts into it.</summary>
+    private async Task InstallUpdate()
+    {
+        if (_app.UpdateAvailable is not { } release)
+            return;
+        _updating = $"Downloading {release.Name} …";
+        UpdateProgress.Value = 0;
+        UpdateProgress.Visibility = Visibility.Visible;
+        ShowUpdates();
+        var progress = new Progress<double>(share =>
+        {
+            UpdateProgress.Value = share;
+            UpdateStatus.Text = _updating = $"Downloading {release.Name} … {share * 100:0} %";
+        });
+        try
+        {
+            await _app.InstallUpdateAsync(release, progress);
+        }
+        catch (Exception ex)
+        {
+            _updating = null;
+            UpdateProgress.Visibility = Visibility.Collapsed;
+            ShowUpdates();
+            MessageBox.Show(this, $"The update didn't work: {ex.Message}\n\nAutoFantic {AppVersion.Text} keeps running as before.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        UpdateStatus.Text = $"{release.Name} is installed. AutoFantic starts again …";
+        try
+        {
+            _app.StartNewVersion("--open");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"{release.Name} is installed, but it didn't start ({ex.Message}). Start AutoFantic again yourself.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        System.Windows.Application.Current.Shutdown();
+    }
+
     private void ShowSensors()
     {
         string path = Path.Combine(_app.RunsPath, "sensors.txt");
@@ -1306,26 +1457,56 @@ public partial class MainWindow : Window
         System.Windows.Application.Current.Shutdown();
     }
 
+    // ── light and dark ─────────────────────────────────────────────────────────────────
+
+    /// <summary>The theme's text colour, only so the window notices a switch between light and dark.</summary>
+    private static readonly DependencyProperty ThemeTextProperty = DependencyProperty.Register(
+        "ThemeText", typeof(object), typeof(MainWindow), new PropertyMetadata(null, (d, _) => ((MainWindow)d).OnThemeChanged()));
+
+    /// <summary>One brush per series colour, shared by every dot and bar in it, so a switch re-colours them all.</summary>
+    private readonly Dictionary<Color, SolidColorBrush> _seriesBrushes = [];
+
+    /// <summary>The brush for a series colour (named by its light step), in the step of the current theme.</summary>
+    private SolidColorBrush SeriesBrush(Color light)
+    {
+        if (!_seriesBrushes.TryGetValue(light, out var brush))
+            _seriesBrushes[light] = brush = new SolidColorBrush(SeriesColors.For(light, this));
+        return brush;
+    }
+
+    private void OnThemeChanged()
+    {
+        foreach (var (light, brush) in _seriesBrushes)
+            brush.Color = SeriesColors.For(light, this);
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────────────────
 
-    private static Ellipse Dot(int group) => new()
+    private Ellipse Dot(int group) => new()
     {
         Width = 10,
         Height = 10,
-        Fill = new SolidColorBrush(Palette[group % Palette.Length]),
+        Fill = SeriesBrush(Palette[group % Palette.Length]),
         Margin = new Thickness(0, 0, 8, 0),
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    private Border Badge(string text, bool over) => new()
+    private static Border Badge(string text, bool over)
     {
-        Margin = new Thickness(0, 6, 0, 0),
-        Padding = new Thickness(8, 2, 8, 3),
-        CornerRadius = new CornerRadius(10),
-        HorizontalAlignment = HorizontalAlignment.Left,
-        Background = over ? new SolidColorBrush(Color.FromArgb(0x30, 0xe3, 0x49, 0x48)) : (TryFindResource("SubtleFillColorSecondaryBrush") as System.Windows.Media.Brush ?? System.Windows.Media.Brushes.Gainsboro),
-        Child = new TextBlock { Text = (over ? "⚠ " : "") + text, FontSize = 12 },
-    };
+        var badge = new Border
+        {
+            Margin = new Thickness(0, 6, 0, 0),
+            Padding = new Thickness(8, 2, 8, 3),
+            CornerRadius = new CornerRadius(10),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Child = new TextBlock { Text = (over ? "⚠ " : "") + text, FontSize = 12 },
+        };
+        if (over)
+            badge.Background = new SolidColorBrush(Color.FromArgb(0x30, 0xe3, 0x49, 0x48));
+        else
+            badge.SetResourceReference(Border.BackgroundProperty, "SubtleFillColorSecondaryBrush"); // follows a switch to dark
+        return badge;
+    }
 
     private static void Place(Grid grid, UIElement element, int column)
     {

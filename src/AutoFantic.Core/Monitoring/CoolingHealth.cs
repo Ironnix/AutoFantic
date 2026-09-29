@@ -16,6 +16,15 @@ public sealed record HealthResult(int Minutes, double RoomShift, double? CpuExtr
     public double? WorstExtra => CpuExtra is null && GpuExtra is null ? null : Math.Max(CpuExtra ?? double.MinValue, GpuExtra ?? double.MinValue);
 }
 
+/// <summary>One day of cooling health against the first week after its calibration (see <see cref="CoolingHealth.SinceCalibration"/>).</summary>
+/// <param name="Cpu">°C the CPU runs warmer at full load than in that first week (null: not enough CPU load that day).</param>
+/// <param name="RoomShift">°C the room was warmer than at the calibration.</param>
+public sealed record DayChange(DateOnly Day, DateTimeOffset Calibration, double? Cpu, double? Gpu, double RoomShift, int Minutes);
+
+/// <summary>The last 7 days against an earlier week: °C warmer at full load, and that as a share of how far the part heats up above the room.</summary>
+/// <param name="CpuPercent">How much worse the CPU's cooling works, in % (see <see cref="CoolingHealth.Rise"/>); negative = better.</param>
+public sealed record HealthComparison(string Label, double? Cpu, double? Gpu, double? CpuPercent, double? GpuPercent);
+
 /// <summary>
 /// "Is the cooling still as good as at the calibration?" For every steady minute of the history
 /// the calibration's model says what the CPU and the GPU should be at that power and those fan
@@ -131,21 +140,104 @@ public static class CoolingHealth
         calibration.Table.FirstOrDefault(r => r.Label == "high") is { } high ? (high.CpuPower, high.GpuPower) : (100, 250);
 
     /// <summary>
-    /// The change against the first week after the calibration (the model is never exact, so the
-    /// baseline is how this PC measured when it was clean), from the days worked out so far. Null
-    /// until there is a baseline week and a later week.
+    /// °C above the room CPU and GPU reached at full load when calibrated (the "high" level): what
+    /// "warmer" is a percentage of. 2 °C more on a rise of 50 °C means the cooling gets the same heat
+    /// out 4 % worse. Null for a part the calibration has no full-load temperature for.
     /// </summary>
-    public static (HealthResult Baseline, HealthResult Now, double? CpuChange, double? GpuChange)? Trend(IReadOnlyList<HealthDay> days, DateTimeOffset calibration, DateOnly today)
+    public static (double? Cpu, double? Gpu) Rise(CalibrationResult calibration)
     {
-        var since = days.Where(d => d.Calibration == calibration).OrderBy(d => d.Day).ToList();
-        if (since.Count == 0)
+        var high = calibration.Table.FirstOrDefault(r => r.Label == "high");
+        double? Of(Component part) =>
+            high is not null && high.Temperatures.TryGetValue(part, out double t) && t - calibration.Ambient > 5 ? t - calibration.Ambient : null;
+        return (Of(Component.Cpu), Of(Component.GpuCore));
+    }
+
+    /// <summary>
+    /// Every day compared with the first week after the calibration it was measured against: °C
+    /// warmer at full load (0 = as good as then). A new calibration starts again at 0, so after
+    /// cleaning and calibrating again the line drops back; over a year it looks like a saw, one
+    /// tooth per calibration. The room stays as measured (against the calibration's room).
+    /// </summary>
+    public static IReadOnlyList<DayChange> SinceCalibration(IEnumerable<HealthDay> days)
+    {
+        var changes = new List<DayChange>();
+        foreach (var calibration in days.Where(d => d.Result.Minutes > 0).GroupBy(d => d.Calibration))
+        {
+            var list = calibration.OrderBy(d => d.Day).ToList();
+            double? cpu = FirstWeek(list, r => r.CpuExtra), gpu = FirstWeek(list, r => r.GpuExtra);
+            changes.AddRange(list.Select(d => new DayChange(d.Day, d.Calibration, d.Result.CpuExtra - cpu, d.Result.GpuExtra - gpu, d.Result.RoomShift, d.Result.Minutes)));
+        }
+        return [.. changes.OrderBy(c => c.Day)];
+    }
+
+    // the first 7 days that know the value, weighted by their minutes: this PC's "normal" right after the calibration
+    private static double? FirstWeek(IReadOnlyList<HealthDay> days, Func<HealthResult, double?> pick)
+    {
+        var known = days.Where(d => pick(d.Result) is not null).ToList();
+        if (known.Count == 0)
             return null;
-        var first = since[0].Day;
-        var baseline = Combine(since.Where(d => d.Day < first.AddDays(7)));
-        var now = Combine(since.Where(d => d.Day > today.AddDays(-7) && d.Day >= first.AddDays(7)));
-        if (baseline is null || now is null)
+        var week = known.Where(d => d.Day < known[0].Day.AddDays(7)).ToList();
+        return week.Sum(d => pick(d.Result)!.Value * d.Result.Minutes) / week.Sum(d => d.Result.Minutes);
+    }
+
+    /// <summary>The earlier weeks the last 7 days are compared with, and how far back each is.</summary>
+    private static readonly (string Label, int Days)[] Earlier = [("A week ago", 7), ("4 weeks ago", 28), ("3 months ago", 91), ("A year ago", 364)];
+
+    public const string AfterCalibration = "The first week after the calibration";
+
+    /// <summary>
+    /// The last 7 days against earlier weeks, all measured against the calibration in use (days of an
+    /// older one aren't comparable: its model was another): a week, 4 weeks, 3 months and a year ago,
+    /// as far as there are days, and the first week after the calibration. Empty without a last week.
+    /// </summary>
+    public static IReadOnlyList<HealthComparison> Compare(IReadOnlyList<DayChange> changes, DateTimeOffset calibration, DateOnly today, (double? Cpu, double? Gpu) rise)
+    {
+        var mine = changes.Where(c => c.Calibration == calibration).ToList();
+        if (Week(mine, today.AddDays(-7), today) is not { } now)
+            return [];
+
+        HealthComparison Against(string label, double? cpu, double? gpu)
+        {
+            double? cpuChange = now.Cpu - cpu, gpuChange = now.Gpu - gpu;
+            return new HealthComparison(label, cpuChange, gpuChange, cpuChange / rise.Cpu * 100, gpuChange / rise.Gpu * 100);
+        }
+        var list = new List<HealthComparison>();
+        foreach (var (label, back) in Earlier)
+            if (Week(mine, today.AddDays(-7 - back), today.AddDays(-back)) is { } then)
+                list.Add(Against(label, then.Cpu, then.Gpu));
+        // the first week is 0 by definition; told once the last 7 days are all after it
+        if (mine.Count > 0 && mine[0].Day.AddDays(7) <= today.AddDays(-6))
+            list.Add(Against(AfterCalibration, 0, 0));
+        return list;
+    }
+
+    // the days in (from, to] as one, weighted by their minutes; null if there's none
+    private static (double? Cpu, double? Gpu)? Week(IReadOnlyList<DayChange> changes, DateOnly from, DateOnly to)
+    {
+        var days = changes.Where(c => c.Day > from && c.Day <= to).ToList();
+        if (days.Count == 0)
             return null;
-        return (baseline, now, now.CpuExtra - baseline.CpuExtra, now.GpuExtra - baseline.GpuExtra);
+        double? Mean(Func<DayChange, double?> pick)
+        {
+            var known = days.Where(d => pick(d) is not null).ToList();
+            return known.Count == 0 ? null : known.Sum(d => pick(d)!.Value * d.Minutes) / known.Sum(d => d.Minutes);
+        }
+        return (Mean(d => d.Cpu), Mean(d => d.Gpu));
+    }
+
+    /// <summary>
+    /// For a chart: one point per day, or with <paramref name="weekly"/> one per week (Monday to
+    /// Sunday, in its middle: the average weighted by minutes, with the lowest and the highest day).
+    /// </summary>
+    public static IReadOnlyList<HistoryPoint> Points(IEnumerable<DayChange> changes, Func<DayChange, double?> pick, bool weekly)
+    {
+        var known = changes.Where(c => pick(c) is not null).ToList();
+        static DateTimeOffset At(DateOnly day, double hours) => new(day.ToDateTime(TimeOnly.MinValue).AddHours(hours));
+        if (!weekly)
+            return [.. known.Select(c => new HistoryPoint(At(c.Day, 12), pick(c)!.Value, pick(c)!.Value, pick(c)!.Value))];
+        return [.. known.GroupBy(c => c.Day.DayNumber / 7) // day 0 (1 Jan 0001) was a Monday
+            .Select(week => new HistoryPoint(At(DateOnly.FromDayNumber(week.Key * 7), 3.5 * 24),
+                week.Sum(c => pick(c)!.Value * c.Minutes) / week.Sum(c => c.Minutes), week.Min(c => pick(c)!.Value), week.Max(c => pick(c)!.Value)))];
     }
 
     /// <summary>Several days as one: weighted by their minutes.</summary>

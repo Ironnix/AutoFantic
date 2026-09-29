@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 
 namespace AutoFantic.App;
 
@@ -20,6 +21,19 @@ internal static class Autostart
 
     public static bool Disable() => Schtasks(["/Delete", "/TN", TaskName, "/F"]) == 0;
 
+    /// <summary>The exe the task starts; null without a task. After moving or unpacking AutoFantic again it can be another copy.</summary>
+    public static string? Target()
+    {
+        if (Schtasks(["/Query", "/TN", TaskName, "/XML"], out string xml) != 0)
+            return null;
+        var command = System.Text.RegularExpressions.Regex.Match(xml, "<Command>\"?([^<\"]+)\"?</Command>");
+        return command.Success ? command.Groups[1].Value.Trim() : null;
+    }
+
+    /// <summary>The exe the task starts if that's another AutoFantic.exe than this one; null if it's this one or there's no task.</summary>
+    public static string? OtherCopy() =>
+        Target() is { } target && !string.Equals(Path.GetFullPath(target), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) ? target : null;
+
     /// <summary>Removes the "AutoFanatic" task from before the rename, if it's still there.</summary>
     public static void RemoveLegacy()
     {
@@ -27,7 +41,9 @@ internal static class Autostart
             Schtasks(["/Delete", "/TN", LegacyTaskName, "/F"]);
     }
 
-    private static int Schtasks(string[] args)
+    private static int Schtasks(string[] args) => Schtasks(args, out _);
+
+    private static int Schtasks(string[] args, out string output)
     {
         var start = new ProcessStartInfo("schtasks.exe")
         {
@@ -40,8 +56,9 @@ internal static class Autostart
             start.ArgumentList.Add(arg);
 
         using var process = Process.Start(start)!;
-        process.StandardOutput.ReadToEnd();
-        process.StandardError.ReadToEnd();
+        var error = process.StandardError.ReadToEndAsync();
+        output = process.StandardOutput.ReadToEnd();
+        error.Wait();
         process.WaitForExit(10_000);
         return process.ExitCode;
     }

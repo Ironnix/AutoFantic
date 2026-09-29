@@ -20,10 +20,13 @@ internal sealed class TrayIcon : IDisposable
     private readonly ContextMenuStrip _menu = new();
     private readonly ToolStripMenuItem _pause = new("Pause (the BIOS controls the fans)");
     private readonly ToolStripMenuItem _autostart = new("Start with Windows");
+    private readonly ToolStripMenuItem _update = new() { Visible = false };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly ConcurrentQueue<string> _alerts = new();
     private readonly Dictionary<LoopState, Icon> _icons;
     private MainWindow? _window;
+    private Version? _announced;
+    private bool _balloonOpensSettings;
 
     public TrayIcon(AppController app, bool quiet)
     {
@@ -45,6 +48,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_pause);
         menu.Items.Add(_autostart);
+        menu.Items.Add(_update);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit (fans back to the BIOS)", null, (_, _) => System.Windows.Application.Current.Shutdown());
         BuildFanItems();
@@ -71,6 +75,12 @@ internal sealed class TrayIcon : IDisposable
             Visible = !quiet,
         };
         _icon.DoubleClick += (_, _) => OpenWindow(_app.IsSetUp ? "overview" : "calibration");
+        _icon.BalloonTipClicked += (_, _) =>
+        {
+            if (_balloonOpensSettings)
+                OpenWindow("settings");
+        };
+        _update.Click += (_, _) => OpenWindow("settings");
 
         _app.Loop.Alert += message => _alerts.Enqueue(message);
         _app.Alert += message => _alerts.Enqueue(message);
@@ -80,7 +90,10 @@ internal sealed class TrayIcon : IDisposable
 
         if (quiet)
             return;
-        if (_app.UnexpectedEnd is { } ended)
+        if (_app.UpdatedFrom is { } from)
+            _icon.ShowBalloonTip(5000, $"AutoFantic updated to {Core.AppVersion.Text}",
+                $"From {from}. What's new: Settings → Updates.", ToolTipIcon.Info);
+        else if (_app.UnexpectedEnd is { } ended)
             _icon.ShowBalloonTip(10000, "AutoFantic ended unexpectedly last time", ended, ToolTipIcon.Warning);
         else if (!_app.IsSetUp)
             _icon.ShowBalloonTip(5000, "AutoFantic isn't set up yet",
@@ -129,7 +142,20 @@ internal sealed class TrayIcon : IDisposable
     private void Refresh()
     {
         while (_alerts.TryDequeue(out var alert))
+        {
+            _balloonOpensSettings = false;
             _icon.ShowBalloonTip(8000, "AutoFantic", alert, ToolTipIcon.Warning);
+        }
+
+        // a newer version: said once, then a menu item until it's installed
+        if (_app.UpdateAvailable is { } release && release.Version != _announced)
+        {
+            _announced = release.Version;
+            _update.Text = $"Update to {release.Version} …";
+            _update.Visible = true;
+            _balloonOpensSettings = true;
+            _icon.ShowBalloonTip(8000, $"{release.Name} is available", "Click here to update (Settings → Updates).", ToolTipIcon.Info);
+        }
 
         if (_app.Loop.Last is not { } status)
             return;

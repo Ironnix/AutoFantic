@@ -290,25 +290,32 @@
                     </Border>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Last 7 days" Style="{StaticResource CardTitle}" />
-                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12"
-                                       Text="Compared with what the calibration expects at the same power and fan speeds." />
-                            <Grid x:Name="HealthRows" />
+                            <TextBlock Text="Compared with earlier" Style="{StaticResource CardTitle}" />
+                            <TextBlock x:Name="HealthCompareIntro" Style="{StaticResource Caption}" Margin="0,2,0,12" />
+                            <Grid x:Name="HealthCompareRows" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Over time" Style="{StaticResource CardTitle}" />
-                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                       Text="Per day: how much warmer CPU and GPU run at full load than expected, and the room." />
-                            <local:HistoryChart x:Name="HealthChart" Height="220" Margin="0,8,0,0" />
+                            <TextBlock x:Name="HealthChartIntro" Style="{StaticResource Caption}" Margin="0,2,0,10" />
+                            <WrapPanel x:Name="HealthRangeButtons" />
+                            <local:HistoryChart x:Name="HealthChart" Height="240" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Last 7 days" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12"
+                                       Text="Against what the calibration's model expects at the same power and fan speeds (the model is never exact, so the comparisons above use the first week after the calibration as normal)." />
+                            <Grid x:Name="HealthRows" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="How it works" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                       Text="A warmer room makes CPU and GPU warmer by the same amount, at any load. Dust in the filters and heatsinks, or old thermal paste, makes them warmer the harder they work. AutoFantic tells the two apart from every steady minute, and compares with the first week after the calibration." />
+                                       Text="AutoFantic compares every steady minute (the same power for a while) with what the calibration measured at that power and those fan speeds. A warmer room makes CPU and GPU warmer by the same amount, at any load. Dust in the filters and heatsinks, or old thermal paste, makes them warmer the harder they work. AutoFantic tells the two apart, so a hot summer day doesn't look like dust. Every day's result is kept, so you can look back a year and more." />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -508,6 +515,29 @@
                     <TextBlock x:Name="VersionText" Style="{StaticResource Caption}" Margin="0,2,0,16" />
 
                     <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,16,0">
+                                    <TextBlock Text="Updates" Style="{StaticResource CardTitle}" />
+                                    <TextBlock x:Name="UpdateStatus" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox x:Name="UpdateDailyBox" Grid.Column="1" VerticalAlignment="Center" Content="Check by itself"
+                                          ToolTip="At every start and once a day AutoFantic asks GitHub for a new version. Nothing about your PC is sent." />
+                            </Grid>
+                            <ProgressBar x:Name="UpdateProgress" Height="6" Minimum="0" Maximum="1" Margin="0,12,0,0" Visibility="Collapsed" />
+                            <WrapPanel Margin="0,14,0,0">
+                                <Button x:Name="UpdateInstall" Style="{DynamicResource AccentButtonStyle}" Padding="16,9" Margin="0,0,10,0" Visibility="Collapsed" />
+                                <Button x:Name="UpdateCheckButton" Content="Check for updates" Padding="16,9" Margin="0,0,10,0" />
+                                <Button x:Name="UpdateNotes" Content="What's new" Padding="16,9" Visibility="Collapsed" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition />
@@ -515,10 +545,28 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="Start with Windows" Style="{StaticResource CardTitle}" />
-                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                <TextBlock x:Name="AutostartNote" Style="{StaticResource Caption}" Margin="0,2,0,0"
                                            Text="Starts when you log in, without an admin prompt." />
                             </StackPanel>
                             <CheckBox x:Name="AutostartBox" Grid.Column="1" VerticalAlignment="Center" Content="On" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,16,0">
+                                <TextBlock Text="Appearance" Style="{StaticResource CardTitle}" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                           Text="Light or dark. &quot;Like Windows&quot; follows Windows (Settings → Personalization → Colors)." />
+                            </StackPanel>
+                            <ComboBox x:Name="ThemeBox" Grid.Column="1" VerticalAlignment="Center" MinWidth="160">
+                                <ComboBoxItem Content="Like Windows" />
+                                <ComboBoxItem Content="Light" />
+                                <ComboBoxItem Content="Dark" />
+                            </ComboBox>
                         </Grid>
                     </Border>
                     <Border Style="{StaticResource Card}">

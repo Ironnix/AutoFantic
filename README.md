@@ -3,7 +3,7 @@
 **Self-learning fan control for Windows PCs.** AutoFantic measures what each fan really does in *your* PC while you game, then sets every fan as quietly as possible for the temperatures you want.
 
 > [!WARNING]
-> **Early development.** AutoFantic is a work in progress and has so far been tested on **one PC** only. There is no installer or release yet, some features are missing, and things can change or break at any time. It controls your fans directly: **use it at your own risk.** The safety features below are there to protect your hardware, but they are no guarantee.
+> **Early development.** AutoFantic is a work in progress and has so far been tested on **one PC** only. There is no installer (unpack the zip and run it), some features are missing, and things can change or break at any time. It controls your fans directly: **use it at your own risk.** The safety features below are there to protect your hardware, but they are no guarantee.
 
 > [!NOTE]
 > **AI disclaimer.** Most of the code, tests and documentation in this project were written with the help of AI (Claude by Anthropic, via Claude Code) and then tested and reviewed by the maintainer. The code can still contain mistakes, including ones a human would not make. Please read the code before you trust it with your hardware, and report problems as issues.
@@ -15,13 +15,15 @@
 * **Calibrates while you play:** start a calibration, play your game (or use the built-in load), and after about 15 minutes AutoFantic knows how much each fan cools the CPU and the GPU. Every calibration adds to the ones before, so a GPU-heavy game and a CPU render complete each other.
 * **Picks the quietest fan speeds** for a preset for the whole PC: *Silent*, *Balanced*, *Cool* or *Max cooling*. Case fans follow whichever of CPU and GPU is warmer; curves never jump steeply.
 * **Explains itself:** for each load level, the part that limits the cooling and why each fan runs as it does, plus every measurement run with its bottleneck.
-* **Monitor:** charts of temperatures, power and every fan's speed and RPM, from the last 10 minutes to the last 30 days, the lowest / average / highest values, and warnings you set yourself (e.g. "GPU hotspot above 90 °C for 10 s", or a fan that stands still although it should turn).
+* **Monitor:** charts of temperatures, power and every fan's speed and RPM, from the last 10 minutes to the last year, the lowest / average / highest values, and warnings you set yourself (e.g. "GPU hotspot above 90 °C for 10 s", or a fan that stands still although it should turn).
 * **Runs in the background:** an icon next to the clock and a window with live temperatures and fan speeds, fan curves you can drag, the calibration, what it did (*Activity*) and settings. It can start with Windows. Every second it reads only the sensors it needs.
 * **A fallback without AutoFantic:** each fan curve as the 4 points a BIOS fan curve takes (or, for the graphics card, as an MSI Afterburner curve), ready to copy.
 * **Switches fans off** when the PC is idle and cool, for every fan that can stop (you choose which).
 * **Extra quiet** when you're away (after a few minutes without keyboard or mouse) and/or at night (a time you set): every fan at its slowest, and off where it can stop, the graphics card's too, as long as it stays cool.
 * **Reports:** every game session (a program that kept the PC busy for a few minutes) with its temperatures, fan speeds and power, and a summary per game.
-* **Cooling health:** compares every steady minute with what the calibration expects, tells a warmer room apart from dust or old thermal paste, and says when it's time to clean.
+* **Cooling health:** compares every steady minute with what the calibration expects, tells a warmer room apart from dust or old thermal paste, and says when it's time to clean. In numbers ("CPU +1.2 °C at full load, the cooling works 2 % worse than 4 weeks ago") and as a chart over up to a year.
+* **Light or dark:** like Windows, or always light or always dark (*Settings → Appearance*). The charts have their own colours for dark mode, so every line stays easy to tell apart.
+* **Updates itself:** *Settings → Updates → Update to …* downloads the new version from GitHub, checks it against GitHub's checksum and restarts into it; your data stays. It looks for a new version at every start and once a day (you can switch that off) and says so next to the clock.
 * **Stays safe:** hard temperature limits, a check for broken sensors, every fan goes back to BIOS control when AutoFantic pauses, sleeps or exits, and a **watchdog** hands the fans back even if AutoFantic is killed.
 
 ## Requirements
@@ -33,23 +35,24 @@
 
 ## Getting started
 
-Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases) (once there is one), unpack it anywhere and run `AutoFantic.exe`, or build it yourself (see *Build from source*). What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Then:
+Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases), unpack it anywhere and run `AutoFantic.exe`, or build it yourself (see *Build from source*). What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Then:
 
-1. **Start `AutoFantic.exe`** (or, in a build from source, double-click `Start-AutoFantic.cmd`) and allow the admin prompt. The first time, the window opens on **Set up**.
+1. **Start `AutoFantic.exe`** (or, from the source, double-click `Start-Dev-Build.cmd`) and allow the admin prompt. The first time, the window opens on **Set up**.
 2. **Before you start:** the checks show whether AutoFantic can reach the mainboard and graphics card fans and whether another fan program is running. Fix what's marked, then *Check again*.
 3. **Step 1 · Find my fans** (about 2 minutes, best at idle), then **Step 2 · Calibrate** with your game or the built-in load (about 15 minutes). When it's done, AutoFantic controls your fans.
 4. When you close the window, AutoFantic keeps running as an icon next to the clock (right-click it for *Pause*, *Start with Windows* and *Exit*). Calibrate again from the window any time, for example with another game.
+5. **New versions:** *Settings → Updates*. One click downloads and installs it (versions before 0.2.0 can't update themselves yet: download that one by hand once).
 
 | Page | What you find there |
 |----|----|
 | **Overview** | status and *Pause*, CPU and GPU temperature, every fan's live speed, **extra quiet** (away / at night), and the preset: *Silent* (CPU ≤ 87 °C, GPU ≤ 82 °C), *Balanced* (≤ 80 °C), *Cool* (≤ 70 °C) or *Max cooling* (every fan only as fast as it still clearly helps). Anything the start-up checks found that needs a look is shown on top |
-| **Monitor** | charts of temperatures, power, fan speed and RPM (10 min to 30 days; hover for the values), a table with now / lowest / average / highest, and your **warnings** |
+| **Monitor** | charts of temperatures, power, fan speed and RPM (10 min to 1 year; hover for the values), a table with now / lowest / average / highest, and your **warnings** |
 | **Fan curves** | one curve per fan: drag a point, double-click to add one, right-click to remove one. The recommended curve stays faint in the background. *Switch off when the PC is idle and cool* (drawing a point down to 0 % does the same). *Reset to recommended*. Below: the same curve for the BIOS (or Afterburner), to copy |
 | **Reports** | every game session and a summary per game: time played, GPU and CPU temperature, hotspot, fan speed, power |
-| **Cooling health** | whether CPU and GPU run warmer than after the calibration at the same load (dust, paste) and what the room is like, per day over time |
+| **Cooling health** | whether CPU and GPU run warmer than after the calibration at the same load (dust, paste): the last 7 days against a week, 4 weeks, 3 months and a year ago, in °C and in % (how much worse the cooling works), and a chart per day or per week over 30 days, 3 months or a year, with the room |
 | **Calibration** (before the first one: **Set up**) | start a calibration with your game or the built-in load, with a live chart. Then *Why these settings*, *Your fans* (how many fans per output and how loud they are, since quiet fans are raised first), *What each fan cools* and *Runs* |
 | **Activity** | what AutoFantic did, newest first: safety stops, sensor problems, fans switching off and on, calibrations, pauses, and what the watchdog did after a crash |
-| **Settings** | *Start with Windows*, the data folder, and a **Developer** section (find the fans again, all sensors, the test console) |
+| **Settings** | **Updates** (check now, update in one click, check by itself), *Start with Windows* (with a hint if it starts another copy of AutoFantic), **Appearance** (like Windows, light or dark), the data folder, and a **Developer** section (find the fans again, all sensors, the test console) |
 
 ## How it works (short)
 
@@ -69,14 +72,15 @@ Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases)
 
 ## Where your data is stored
 
-Everything is in `%LocalAppData%\AutoFantic` as plain files (not uploaded): `fans.json` (your fans), `measurements.json` (every calibration run), `fans-off.json`, `calibration.json` (the current result), `curves.json` (your own curves), `activity.log` (what AutoFantic did), `history.db` (SQLite: the monitor's history at 5-second values for 2 days, minute values for 30 days and hourly values for a year, plus the game sessions and the daily cooling health; about 50 MB at most), `warnings.json` (your warnings), `quiet.json` (extra quiet), and a readable report, `calibration.html` and `calibration-*.txt`. Earlier versions kept it in `runs\` next to the program; the first start copies it over once and leaves the old folder as it was. To use another folder, set the environment variable `AUTOFANTIC_DATA`.
+Everything is in `%LocalAppData%\AutoFantic` as plain files (not uploaded): `fans.json` (your fans), `measurements.json` (every calibration run), `fans-off.json`, `calibration.json` (the current result), `curves.json` (your own curves), `activity.log` (what AutoFantic did), `history.db` (SQLite: the monitor's history at 5-second values for 2 days, minute values for 30 days and hourly values for a year, plus the game sessions and the daily cooling health, kept for good; about 65 MB at most, of which the year of hourly values is about 7 MB), `warnings.json` (your warnings), `quiet.json` (extra quiet), `updates.json` (check by itself or not), `appearance.json` (light or dark), and a readable report, `calibration.html` and `calibration-*.txt`. Earlier versions kept it in `runs\` next to the program; the first start copies it over once and leaves the old folder as it was. To use another folder, set the environment variable `AUTOFANTIC_DATA`.
+
+**Nothing is uploaded.** The only connection AutoFantic makes is the update check: it asks GitHub's public API for the list of releases (at every start and once a day, off with *Settings → Updates → Check by itself*), and it downloads a new version only when you click *Update*.
 
 ## Roadmap
 
 | | |
 |----|----|
-| ✅ Done | find fans, calibration while gaming, combining calibrations, presets, quietest mix, fans off at idle, window + tray icon, set-up in the window, a watchdog after crashes, an activity log, case fans that follow CPU and GPU, smoother curves, a monitor with history and warnings, BIOS fallback curves, extra quiet (away / night), game reports, cooling health, start with Windows, sleep handling |
-| 🔜 Next | one downloadable exe (GitHub release) |
+| ✅ Done | GitHub releases and updates in the app, dark mode, find fans, calibration while gaming, combining calibrations, presets, quietest mix, fans off at idle, window + tray icon, set-up in the window, a watchdog after crashes, an activity log, case fans that follow CPU and GPU, smoother curves, a monitor with history and warnings, BIOS fallback curves, extra quiet (away / night), game reports, cooling health, start with Windows, sleep handling |
 | 💡 Later | learning in the background during normal gaming, reacting to power before the temperature rises, a quieter GPU idle |
 
 ## Build from source
@@ -92,6 +96,8 @@ dotnet publish src/AutoFantic.Spike -c Release -o publish   # publish\autofantic
 
 Both are self-contained single exe files, so the target PC needs no .NET installed.
 
+**Trying a change before pushing it:** exit AutoFantic, then double-click `Start-Dev-Build.cmd`. It builds the source as it is now into `dev\` and starts it (Settings shows its version with *-dev*, e.g. 0.2.0-dev), with the same data as the installed AutoFantic. Start the installed one again afterwards.
+
 ```
 src/AutoFantic.Core    hardware access, simulated PC, calibration, thermal model, fan control, safety, hand-back after a crash, activity log, monitor history and warnings, reports
 src/AutoFantic.App     the window, the tray icon and the watchdog (WPF)
@@ -99,9 +105,9 @@ src/AutoFantic.Spike   the test console (developer tool)
 tests/                 unit tests for everything that doesn't need real hardware
 ```
 
-**Making a release:** give the version its section in `CHANGELOG.md` (`## [0.2.0] - date`), then push a tag `v0.2.0`. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds both exes and makes a **draft** pre-release with that section as its text; it's public only once you publish the draft on GitHub.
+**Making a release:** give the version its section in `CHANGELOG.md` (`## [0.2.0] - date`), then push a tag `v0.2.0`. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds both exes and makes a **draft** pre-release with that section as its text; it's public only once you publish the draft on GitHub. From then on the app's update check finds it (drafts are invisible to it), so **publish** each release, and give it a plain version tag: `v0.2.0-test` is ignored.
 
-The app can check itself without touching real fans: `AutoFantic.exe --simulate --selftest` (runs 5 s), `--simulate --selftest-calibration --sim-speed 60` (a whole first calibration), `--simulate --screenshot page.png --page overview|monitor|curves|reports|health|calibration|log|settings [--full]` (`--full` = the whole page, also what is scrolled out of view).
+The app can check itself without touching real fans: `AutoFantic.exe --simulate --selftest` (runs 5 s), `--simulate --selftest-calibration --sim-speed 60` (a whole first calibration), `--simulate --selftest-update <url of a releases.json>` (a whole update from a local copy of GitHub's list: check, download, install, restart), `--simulate --screenshot page.png --page overview|monitor|curves|reports|health|calibration|log|settings [--full]` (`--full` = the whole page, also what is scrolled out of view).
 
 <details>
 <summary>Test console commands (developer tool)</summary>
@@ -127,7 +133,7 @@ Run in a terminal **as administrator**: `publish\autofantic-spike.exe <command>`
 
 ## Troubleshooting
 
-* **"needs admin rights":** start it with "Run as administrator" (`Start-AutoFantic.cmd` asks by itself).
+* **"needs admin rights":** start it with "Run as administrator" (`Start-Dev-Build.cmd` and the exe ask by themselves).
 * **No mainboard fans found** (the set-up check says so): current LibreHardwareMonitor versions use the **PawnIO** driver. Install it from [pawnio.eu](https://pawnio.eu), or run the LibreHardwareMonitor app once (it offers to install it), then start AutoFantic again. If your fan chip still doesn't show up, it isn't supported yet.
 * **Fans jump around or ignore the speed:** another fan tool (the mainboard's own app, Fan Control, Argus Monitor …) is still controlling them. The check on the Overview names the ones it knows. Close it or switch its fan control off.
 * **GPU fans never switch off at idle:** check the GPU's idle power on the Overview. Many cards draw 100 W or more at "idle" with several or high-refresh monitors, and then they get too warm without their fans.

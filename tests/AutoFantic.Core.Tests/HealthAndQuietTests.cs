@@ -214,20 +214,80 @@ public class HealthAndQuietTests
         Assert.Null(result.GpuExtra);
     }
 
+    // 30 days after a calibration: the CPU stays as it was, the graphics card gets 0.2 °C warmer every day after the first week
+    private static List<HealthDay> DustyGpu(DateTimeOffset calibrated, DateOnly start, int count = 30) =>
+        [.. Enumerable.Range(0, count).Select(i => new HealthDay(start.AddDays(i), calibrated, new HealthResult(300, 0, 1.0, i < 7 ? 1.5 : 1.5 + (i - 6) * 0.2)))];
+
     [Fact]
-    public void The_trend_compares_the_last_week_with_the_first_week_after_the_calibration()
+    public void The_last_week_is_compared_with_earlier_weeks_in_degrees_and_percent()
     {
-        var calibrated = T0;
         var start = DateOnly.FromDateTime(T0.Date);
-        var days = Enumerable.Range(0, 30)
-            .Select(i => new HealthDay(start.AddDays(i), calibrated, new HealthResult(300, 0, 1.0, i < 7 ? 1.5 : 1.5 + (i - 6) * 0.2)))
+        var changes = CoolingHealth.SinceCalibration(DustyGpu(T0, start));
+
+        var rows = CoolingHealth.Compare(changes, T0, start.AddDays(29), (Cpu: 60, Gpu: 50)).ToDictionary(r => r.Label);
+
+        var first = rows[CoolingHealth.AfterCalibration];
+        Assert.Equal(4.0, first.Gpu!.Value, precision: 3);        // the last 7 days: 0.2 °C × 20 days on average
+        Assert.Equal(8.0, first.GpuPercent!.Value, precision: 3); // 4 °C on a rise of 50 °C
+        Assert.Equal(0, first.Cpu!.Value, precision: 3);
+        Assert.Equal(1.4, rows["A week ago"].Gpu!.Value, precision: 3); // 7 days × 0.2 °C
+        Assert.True(rows.ContainsKey("4 weeks ago"));
+        Assert.False(rows.ContainsKey("3 months ago"));            // no days that far back
+
+        // still in the first week: nothing to compare with yet
+        var early = CoolingHealth.SinceCalibration(DustyGpu(T0, start, count: 5));
+        Assert.DoesNotContain(CoolingHealth.Compare(early, T0, start.AddDays(4), (60, 50)), r => r.Label == CoolingHealth.AfterCalibration);
+    }
+
+    [Fact]
+    public void A_new_calibration_starts_again_at_zero_and_only_its_own_days_are_compared()
+    {
+        var start = DateOnly.FromDateTime(T0.Date);
+        var recalibrated = T0.AddDays(30);
+        // after cleaning: a new calibration whose model is off by -2 °C, and no dust yet
+        var days = DustyGpu(T0, start)
+            .Concat(Enumerable.Range(30, 20).Select(i => new HealthDay(start.AddDays(i), recalibrated, new HealthResult(300, 0, -2, -2))))
             .ToList();
 
-        var trend = CoolingHealth.Trend(days, calibrated, start.AddDays(29))!.Value;
+        var changes = CoolingHealth.SinceCalibration(days);
 
-        Assert.Equal(1.5, trend.Baseline.GpuExtra!.Value, precision: 3);
-        Assert.InRange(trend.GpuChange!.Value, 4.0, 4.6);  // the graphics card got clearly warmer
-        Assert.Equal(0, trend.CpuChange!.Value, precision: 3);
-        Assert.Null(CoolingHealth.Trend(days.Take(5).ToList(), calibrated, start.AddDays(4))); // still the baseline week
+        Assert.InRange(changes.Single(c => c.Day == start.AddDays(29)).Gpu!.Value, 4.5, 4.7); // dusty before the cleaning
+        Assert.All(changes.Where(c => c.Calibration == recalibrated), c => Assert.Equal(0, c.Gpu!.Value, precision: 3));
+        var rows = CoolingHealth.Compare(changes, recalibrated, start.AddDays(49), (60, 50));
+        Assert.All(rows, r => Assert.Equal(0, r.Gpu!.Value, precision: 3)); // the dusty weeks belong to the old calibration
+    }
+
+    [Fact]
+    public void Long_ranges_show_one_point_per_week_with_its_coolest_and_warmest_day()
+    {
+        var monday = new DateOnly(2026, 9, 28);
+        var changes = Enumerable.Range(0, 14)
+            .Select(i => new DayChange(monday.AddDays(i), T0, Cpu: i, Gpu: null, RoomShift: 0, Minutes: i < 7 ? 100 : 300))
+            .ToList();
+
+        var weeks = CoolingHealth.Points(changes, c => c.Cpu, weekly: true);
+
+        Assert.Equal(2, weeks.Count);
+        Assert.Equal(3, weeks[0].Avg, precision: 3); // days 0..6, equal minutes
+        Assert.Equal(0, weeks[0].Min);
+        Assert.Equal(6, weeks[0].Max);
+        Assert.Equal(monday.AddDays(3), DateOnly.FromDateTime(weeks[0].Time.DateTime)); // in the middle of the week
+        Assert.Equal(14, CoolingHealth.Points(changes, c => c.Cpu, weekly: false).Count);
+        Assert.Empty(CoolingHealth.Points(changes, c => c.Gpu, weekly: true)); // no GPU values: no points
+    }
+
+    [Fact]
+    public void The_percentage_is_of_how_far_each_part_heats_up_above_the_room_at_full_load()
+    {
+        var calibration = HealthCalibration() with
+        {
+            Table = [new LoadRow("high", 140, 350, [80, 80], new Dictionary<Component, double> { [Component.Cpu] = 82, [Component.GpuCore] = 72 }, 0, true)],
+        };
+
+        var (cpu, gpu) = CoolingHealth.Rise(calibration);
+
+        Assert.Equal(60, cpu); // 82 °C in a 22 °C room
+        Assert.Equal(50, gpu);
+        Assert.Equal((null, null), CoolingHealth.Rise(HealthCalibration())); // no full-load temperatures: no percentage
     }
 }

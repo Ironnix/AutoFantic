@@ -34,6 +34,7 @@ internal sealed class CurveEditor : FrameworkElement
     {
         Focusable = true;
         Cursor = Cursors.Arrow;
+        ThemeRedraw.Follow(this);
     }
 
     /// <summary>Raised when the user finished changing the curve (drag released, point added or removed).</summary>
@@ -110,8 +111,9 @@ internal sealed class CurveEditor : FrameworkElement
         }
         Label(dc, TemperatureLabel, new Point(plot.Right, plot.Bottom + 28), text, HorizontalAlignment.Right, size: 11);
 
-        var color = new SolidColorBrush(Color);
-        var faint = new SolidColorBrush(Color.FromArgb(0x70, Color.R, Color.G, Color.B));
+        var series = SeriesColors.For(Color, this);
+        var color = new SolidColorBrush(series);
+        var faint = new SolidColorBrush(Color.FromArgb(0x70, series.R, series.G, series.B));
 
         // recommended: dashed, faint
         if (_recommended.Count > 0)
@@ -121,7 +123,7 @@ internal sealed class CurveEditor : FrameworkElement
         if (_curve.Count > 0)
         {
             var area = Line(_curve, close: true);
-            dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(0x1c, Color.R, Color.G, Color.B)), null, area);
+            dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(0x1c, series.R, series.G, series.B)), null, area);
             dc.DrawGeometry(null, new Pen(color, 2.5) { LineJoin = PenLineJoin.Round }, Line(_curve));
         }
 
@@ -129,7 +131,7 @@ internal sealed class CurveEditor : FrameworkElement
         if (OffBelow is { } off && off > MinT)
         {
             var band = new Rect(new Point(plot.Left, Y(0) - 6), new Point(X(off), Y(0)));
-            var tint = new SolidColorBrush(Color.FromArgb(0x55, Color.R, Color.G, Color.B));
+            var tint = new SolidColorBrush(Color.FromArgb(0x55, series.R, series.G, series.B));
             dc.DrawRectangle(tint, null, band);
             // explained below the axis, like a legend, where it can't collide with the live label
             dc.DrawRectangle(tint, null, new Rect(plot.Left, plot.Bottom + 25, 14, 6));

@@ -4,8 +4,20 @@
 
 ## [0.2.0] - not released yet
 
+### New
 
+- **Updates in the app:** *Settings → Updates → Update to …* downloads the new version from GitHub, checks it against GitHub's checksum, and restarts AutoFantic into it (the BIOS has the fans for those few seconds). Your data stays. If anything goes wrong, the old version keeps running and nothing is changed.
+- **Checks by itself** at every start and once a day, and says so next to the clock. You can switch that off (*Check by itself*). It's the only connection AutoFantic makes: one request to GitHub's public list of releases, nothing about your PC is sent.
+- **Dark mode:** *Settings → Appearance*: like Windows (as before), always light or always dark. It switches right away. The charts use their own colours in dark mode, so no line is too dim on the dark background.
+- The temperature chart's **GPU hotspot** and **GPU memory** lines are now green and yellow: the old red and violet were too easy to mix up with GPU (orange) and CPU (blue).
+- **Monitor over a year:** *3 months* and *1 year* next to the other time ranges (the hourly values were already kept for 400 days).
+- **Cooling health in numbers:** the last 7 days against a week, 4 weeks, 3 months and a year ago, and against the first week after the calibration: °C warmer at full load and how much worse the cooling works in % (e.g. "+1.2 °C (+2.2 %)").
+- **Cooling health over a year:** the chart has *30 days*, *3 months* (per week) and *1 year*. Each day counts against the first week after its calibration, so a new calibration after cleaning starts again at 0.
+- *Start with Windows* says when it starts another copy of AutoFantic (for example an older one from before you unpacked it somewhere else).
 
+### Good to know
+
+- 0.1.0 can't update itself: download 0.2.0 by hand once, unpack it over the old one (or anywhere), and switch *Start with Windows* off and on again if it points to the old copy. Every later version is one click.
 
 ## [0.1.0] - 30.09.2026
 

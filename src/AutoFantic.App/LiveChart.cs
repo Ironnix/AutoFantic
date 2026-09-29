@@ -22,6 +22,8 @@ internal sealed class LiveChart : FrameworkElement
 
     private readonly List<(DateTime Time, double? Cpu, double? Gpu)> _points = [];
 
+    public LiveChart() => ThemeRedraw.Follow(this);
+
     public void Add(double? cpu, double? gpu)
     {
         var now = DateTime.Now;
@@ -58,13 +60,14 @@ internal sealed class LiveChart : FrameworkElement
         Label(dc, "5 min ago", new Point(plot.Left, plot.Bottom + 12), text, HorizontalAlignment.Left);
         Label(dc, "now", new Point(plot.Right, plot.Bottom + 12), text, HorizontalAlignment.Right);
 
-        Series(dc, p => p.Cpu, CpuColor, X, Y);
-        Series(dc, p => p.Gpu, GpuColor, X, Y);
+        Color cpu = SeriesColors.For(CpuColor, this), gpu = SeriesColors.For(GpuColor, this);
+        Series(dc, p => p.Cpu, cpu, X, Y);
+        Series(dc, p => p.Gpu, gpu, X, Y);
 
         // legend with the latest values
         var last = _points.LastOrDefault();
         double x = plot.Left;
-        foreach (var (name, color, value) in new[] { ("CPU", CpuColor, last.Cpu), ("GPU", GpuColor, last.Gpu) })
+        foreach (var (name, color, value) in new[] { ("CPU", cpu, last.Cpu), ("GPU", gpu, last.Gpu) })
         {
             dc.DrawRoundedRectangle(new SolidColorBrush(color), null, new Rect(x, 6, 12, 12), 3, 3);
             var ft = Text($"{name} {(value is { } v ? $"{v:0} °C" : "–")}", TryFindResource("TextFillColorPrimaryBrush") as Brush ?? Brushes.Black, bold: true);
