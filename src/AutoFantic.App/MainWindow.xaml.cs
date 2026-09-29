@@ -140,6 +140,7 @@ public partial class MainWindow : Window
                 _app.SetCurve(_selected, effective.Groups[_selected].Curve, AllowStop.IsChecked == true);
         };
         ResetCurve.Click += (_, _) => _app.ResetCurve(_selected);
+        BiosBox.Click += (_, _) => _app.SetBios(_selected, BiosBox.IsChecked == true);
 
         StartCalibrationButton.Click += (_, _) => StartCalibration();
         StopCalibrationButton.Click += (_, _) => _app.StopCalibration();
@@ -403,9 +404,9 @@ public partial class MainWindow : Window
 
         for (int i = 0; i < _fanRows.Count; i++)
         {
-            double? percent = _app.Calibrating || i >= status.Fans.Count ? null : status.Fans[i].Percent;
-            _fanRows[i].Bar.Value = percent ?? 0;
-            _fanRows[i].Value.Text = _app.Calibrating ? "test" : percent switch { null => "BIOS", 0 => "off", { } p => $"{p:0} %" };
+            var reading = _app.Calibrating || i >= status.Fans.Count ? null : status.Fans[i];
+            _fanRows[i].Bar.Value = reading?.Percent ?? reading?.BiosPercent ?? 0;
+            _fanRows[i].Value.Text = _app.Calibrating ? "test" : Speed(reading);
         }
 
         // the ring sits at the smoothed temperature the fan control reads the curve at
@@ -414,7 +415,9 @@ public partial class MainWindow : Window
         var group = effective.Groups[Math.Min(_selected, effective.Groups.Count - 1)];
         var fan = _selected < status.Fans.Count ? status.Fans[_selected] : null;
         double? followed = fan?.Status?.Temperature ?? CalibrationInsights.Followed(group.Follows, status.CpuTemp, status.GpuTemp);
-        Editor.Live = followed is { } t && fan is not null && !_app.Calibrating ? (t, fan.Percent, Note(fan.Status)) : null;
+        Editor.Live = followed is { } t && fan is not null && !_app.Calibrating
+            ? fan.Bios ? (t, fan.BiosPercent, "the BIOS runs it") : (t, fan.Percent, Note(fan.Status))
+            : null;
         Editor.Refresh();
     }
 
@@ -495,10 +498,17 @@ public partial class MainWindow : Window
         Editor.TemperatureLabel = Capitalize(CalibrationInsights.FollowsName(effective.Follows));
         Editor.SetCurves(effective.Curve, recommended.Curve);
 
-        bool custom = _app.IsCustom(_selected);
+        bool custom = _app.IsCustom(_selected), bios = effective.Bios;
         CurveTitle.Text = effective.Name;
-        CurveSubtitle.Text = $"Follows the {CalibrationInsights.FollowsName(effective.Follows)} · {CalibrationReport.Role(effective)} · "
-            + (custom ? "your own curve" : "the recommended curve");
+        CurveSubtitle.Text = bios
+            ? $"Controlled by the BIOS · {CalibrationReport.Role(effective)} · AutoFantic's {(custom ? "curve (yours)" : "curve")} is kept for later"
+            : $"Follows the {CalibrationInsights.FollowsName(effective.Follows)} · {CalibrationReport.Role(effective)} · "
+              + (custom ? "your own curve" : "the recommended curve");
+        BiosBox.IsChecked = bios;
+        BiosHint.Visibility = bios ? Visibility.Visible : Visibility.Collapsed;
+        Editor.IsEnabled = !bios;
+        Editor.Opacity = bios ? 0.45 : 1;
+        CurveHint.Visibility = bios ? Visibility.Collapsed : Visibility.Visible;
         LegendUse.Fill = SeriesBrush(color);
         LegendRecommended.Stroke = SeriesBrush(color);
         LegendRecommended.Opacity = 0x90 / 255.0;
@@ -506,7 +516,7 @@ public partial class MainWindow : Window
         bool canStop = _app.CanStop(_selected), allows = _app.AllowsStop(_selected);
         double offAt = CurveController.OffTemperature(effective);
         string part = CalibrationInsights.Name(effective.Follows);
-        AllowStop.IsEnabled = canStop;
+        AllowStop.IsEnabled = canStop && !bios;
         AllowStop.IsChecked = allows;
         StopHint.Text = !canStop
             ? "These fans keep turning at 0 %, so they can't be switched off."
@@ -515,7 +525,7 @@ public partial class MainWindow : Window
               + (_app.RecommendsStop(_selected) ? "" : " (Your choice: the calibration keeps them on.)")
             : "Or drag a point down to 0 %." + (_app.RecommendsStop(_selected) ? " Recommended." : "");
         Editor.OffBelow = allows ? offAt : null;
-        ResetCurve.IsEnabled = custom;
+        ResetCurve.IsEnabled = custom && !bios;
 
         // the same curve for when AutoFantic isn't running: 4 points for a BIOS, the whole curve for Afterburner
         bool gpu = effective.Follows == Component.GpuCore;
@@ -914,6 +924,10 @@ public partial class MainWindow : Window
     /// <summary>The charts and the values for the chosen time range, from the history.</summary>
     private void RefreshMonitor()
     {
+        var limits = new Core.Analysis.SafetyLimits();
+        var preset = _app.Preset;
+        LimitsNote.Text = $"Limits: CPU {limits.CpuMax:0} °C · GPU {limits.GpuCoreMax:0} °C · hotspot and memory {limits.GpuHotspotMax:0} °C. Above them every fan runs at 100 %."
+            + Environment.NewLine + $"{preset.Name} keeps the GPU at up to {preset.Profile.GpuCore:0} °C and the hotspot at up to {preset.Profile.GpuHotspot:0} °C.";
         var store = _app.Monitor.Store;
         var to = _app.Loop.Last?.Time ?? DateTimeOffset.Now;
         var from = to - _range;
@@ -1153,8 +1167,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>A simple table: a header row in grey, then the rows; the first column left, the others right.</summary>
-    private void FillTable(Grid grid, double[] widths, string[] header, IEnumerable<string[]> rows, string empty)
+    /// <param name="headerWhenEmpty">False: without rows only <paramref name="empty"/> is shown, no column titles over nothing.</param>
+    private void FillTable(Grid grid, double[] widths, string[] header, IEnumerable<string[]> rows, string empty, bool headerWhenEmpty = true)
     {
+        var list = rows.ToList();
         grid.Children.Clear();
         grid.RowDefinitions.Clear();
         grid.ColumnDefinitions.Clear();
@@ -1178,14 +1194,11 @@ public partial class MainWindow : Window
             }
             r++;
         }
-        Row(header, caption: true);
-        bool any = false;
-        foreach (var row in rows)
-        {
+        if (list.Count > 0 || headerWhenEmpty)
+            Row(header, caption: true);
+        foreach (var row in list)
             Row(row, caption: false);
-            any = true;
-        }
-        if (!any)
+        if (list.Count == 0)
         {
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var text = new TextBlock { Text = empty, Style = (Style)FindResource("Caption") };
@@ -1216,6 +1229,7 @@ public partial class MainWindow : Window
             HealthTitle.Text = "Calibrate first";
             HealthDetail.Text = "Cooling health compares with the calibration.";
             HealthCompareIntro.Text = "";
+            HealthCompareNote.Visibility = Visibility.Collapsed;
             HealthCompareRows.Children.Clear();
             HealthRows.Children.Clear();
             return;
@@ -1256,17 +1270,20 @@ public partial class MainWindow : Window
         }
 
         // the last 7 days against earlier weeks, in °C and as a share of the rise above the room
+        HealthCompareIntro.Text = "The last 7 days against earlier weeks, at the same power and fan speeds. + means warmer now.";
+        FillTable(HealthCompareRows, [2.2, 1.5, 1.5],
+            ["", "CPU at full load", "GPU at full load"],
+            comparisons.Select(c => new[] { c.Label, Change(c.Cpu, c.CpuPercent), Change(c.Gpu, c.GpuPercent) }),
+            "Nothing to compare yet. The first week after the calibration is what's normal; the comparisons start a week after that.",
+            headerWhenEmpty: false);
         var rises = new List<string>();
         if (rise.Cpu is { } cpuRise)
-            rises.Add($"the CPU {cpuRise:0} °C");
+            rises.Add($"the CPU heats up {cpuRise:0} °C above the room at {topCpu:0} W");
         if (rise.Gpu is { } gpuRise)
-            rises.Add($"the GPU {gpuRise:0} °C");
-        HealthCompareIntro.Text = "The last 7 days against earlier weeks, at the same power and fan speeds (+ = warmer now)."
-            + (rises.Count > 0 ? $" The % is how much worse the cooling works: at full load {string.Join(" and ", rises)} above the room, so 1 °C more on 50 °C is 2 %." : "");
-        FillTable(HealthCompareRows, [2.2, 1.6, 1.6],
-            ["", $"CPU at full load ({topCpu:0} W)", $"GPU at full load ({topGpu:0} W)"],
-            comparisons.Select(c => new[] { c.Label, Change(c.Cpu, c.CpuPercent), Change(c.Gpu, c.GpuPercent) }),
-            "Nothing to compare with yet: that needs a week of use, and the first comparison with the calibration comes a week after it.");
+            rises.Add($"the GPU {gpuRise:0} °C at {topGpu:0} W");
+        HealthCompareNote.Text = comparisons.Count == 0 || rises.Count == 0 ? ""
+            : $"The % is how much worse the cooling works. At full load {string.Join(" and ", rises)}: 1 °C more on {rise.Cpu ?? rise.Gpu:0} °C is {100 / (rise.Cpu ?? rise.Gpu ?? 100):0.0} %.";
+        HealthCompareNote.Visibility = HealthCompareNote.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         string Extra(double? extra, string part) => extra is not { } e ? $"not enough {part} load yet" : $"{Signed(e)} °C than the model expects";
         FillTable(HealthRows, [1.6, 3],
@@ -1375,6 +1392,15 @@ public partial class MainWindow : Window
     }
 
     private void OnUpdateStateChanged() => Dispatcher.BeginInvoke(ShowUpdates);
+
+    /// <summary>A fan's speed in a few characters: "45 %", "off", "BIOS", or "BIOS 45 %" for a fan the user gave to the BIOS.</summary>
+    internal static string Speed(FanReading? fan) => fan switch
+    {
+        { Bios: true, BiosPercent: { } bios } => $"BIOS {bios:0} %",
+        { Percent: 0 } => "off",
+        { Percent: { } p } => $"{p:0} %",
+        _ => "BIOS",
+    };
 
     /// <summary>The Updates card: this version, what the last check found, and the buttons that fit.</summary>
     private void ShowUpdates()

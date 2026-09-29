@@ -47,7 +47,7 @@ Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases)
 |----|----|
 | **Overview** | status and *Pause*, CPU and GPU temperature, every fan's live speed, **extra quiet** (away / at night), and the preset: *Silent* (CPU ≤ 87 °C, GPU ≤ 82 °C), *Balanced* (≤ 80 °C), *Cool* (≤ 70 °C) or *Max cooling* (every fan only as fast as it still clearly helps). Anything the start-up checks found that needs a look is shown on top |
 | **Monitor** | charts of temperatures, power, fan speed and RPM (10 min to 1 year; hover for the values), a table with now / lowest / average / highest, and your **warnings** |
-| **Fan curves** | one curve per fan: drag a point, double-click to add one, right-click to remove one. The recommended curve stays faint in the background. *Switch off when the PC is idle and cool* (drawing a point down to 0 % does the same). *Reset to recommended*. Below: the same curve for the BIOS (or Afterburner), to copy |
+| **Fan curves** | one curve per fan: drag a point, double-click to add one, right-click to remove one. The recommended curve stays faint in the background. *Switch off when the PC is idle and cool* (drawing a point down to 0 % does the same). *Let the BIOS control these fans*: hands just this fan back to the BIOS, the others stay with AutoFantic. *Reset to recommended*. Below: the same curve for the BIOS (or Afterburner), to copy |
 | **Reports** | every game session and a summary per game: time played, GPU and CPU temperature, hotspot, fan speed, power |
 | **Cooling health** | whether CPU and GPU run warmer than after the calibration at the same load (dust, paste): the last 7 days against a week, 4 weeks, 3 months and a year ago, in °C and in % (how much worse the cooling works), and a chart per day or per week over 30 days, 3 months or a year, with the room |
 | **Calibration** (before the first one: **Set up**) | start a calibration with your game or the built-in load, with a live chart. Then *Why these settings*, *Your fans* (how many fans per output and how loud they are, since quiet fans are raised first), *What each fan cools* and *Runs* |
@@ -68,6 +68,7 @@ Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases)
 * A temperature sensor that stops reporting or reads nonsense hands the fans back to the BIOS, since a lost sensor must never look like "all fine".
 * A fan that is switched off starts again as soon as its part gets warm (5 °C above where it stopped), whenever anything goes above 65 °C, or when load comes.
 * Pause, sleep, exit and errors all hand the fans back to the BIOS.
+* A fan you gave to the BIOS (*Fan curves → Let the BIOS control these fans*) is left alone completely, also at a limit: then the BIOS's own curve applies to it.
 * **Watchdog:** while AutoFantic drives a fan, it keeps what the BIOS had set in a small file (`fans-in-use-<process id>.json`: the fan chip's own memory of its BIOS setup). A tiny second process waits for AutoFantic to end; if it ended without handing the fans back (a crash, Task Manager → End task), the watchdog does it with that file. If the watchdog didn't run either, AutoFantic does it at its next start. A PC restart always restores the BIOS setup too.
 
 ## Where your data is stored

@@ -176,7 +176,10 @@ internal sealed class HistoryChart : FrameworkElement
     private void Hover(DrawingContext dc, Rect plot, double hx, double span, Brush primary)
     {
         var time = _from + TimeSpan.FromSeconds((hx - plot.Left) / plot.Width * span);
-        var rows = new List<(Color Color, string Text)>();
+        var secondary = TryFindResource("TextFillColorSecondaryBrush") as Brush ?? Brushes.Gray;
+        // one row per line: its name, the value (right-aligned, so the numbers line up) and, if the
+        // point stands for a stretch that varied, its lowest to highest in grey
+        var rows = new List<(Color Color, FormattedText Name, FormattedText Value, FormattedText? Range)>();
         foreach (var line in _lines)
         {
             if (line.Points.Count == 0)
@@ -184,31 +187,37 @@ internal sealed class HistoryChart : FrameworkElement
             var nearest = line.Points.MinBy(p => Math.Abs((p.Time - time).TotalSeconds));
             if (Math.Abs((nearest.Time - time).TotalSeconds) > span / 50 + 10)
                 continue;
-            string range = nearest.Max - nearest.Min > 0.5 ? $"  ({Value(nearest.Min)}–{Value(nearest.Max)})" : "";
-            rows.Add((SeriesColors.For(line.Color, this), $"{line.Name} {Value(nearest.Avg)} {_unit}{range}"));
+            var range = nearest.Max - nearest.Min > 0.5 ? Text($"{Value(nearest.Min)}–{Value(nearest.Max)}", secondary) : null;
+            rows.Add((SeriesColors.For(line.Color, this), Text(line.Name, primary), Text($"{Value(nearest.Avg)} {_unit}", primary, bold: true), range));
         }
         if (rows.Count == 0)
             return;
 
-        var guide = new Pen(TryFindResource("TextFillColorSecondaryBrush") as Brush ?? Brushes.Gray, 1) { DashStyle = DashStyles.Dash };
+        var guide = new Pen(secondary, 1) { DashStyle = DashStyles.Dash };
         dc.DrawLine(guide, new Point(hx, plot.Top), new Point(hx, plot.Bottom));
 
-        var texts = rows.Select(r => (r.Color, Text: Text(r.Text, primary))).ToList();
-        var header = Text(time.ToLocalTime().ToString(span > 86400 ? "dd.MM. HH:mm" : "HH:mm:ss", CultureInfo.InvariantCulture), primary, bold: true);
-        double width = Math.Max(header.Width, texts.Max(t => t.Text.Width + 16)) + 16;
-        double height = header.Height + texts.Sum(t => t.Text.Height + 2) + 14;
+        const double pad = 10, swatch = 14, gap = 16, rowGap = 3;
+        var header = Text(time.ToLocalTime().ToString(span > 86400 ? "dd.MM. HH:mm" : "HH:mm:ss", CultureInfo.InvariantCulture), secondary);
+        double names = rows.Max(r => r.Name.Width), values = rows.Max(r => r.Value.Width);
+        double ranges = rows.Max(r => r.Range?.Width ?? 0);
+        double width = pad + Math.Max(header.Width, swatch + names + gap + values + (ranges > 0 ? 10 + ranges : 0)) + pad;
+        double height = pad + header.Height + 4 + rows.Sum(r => r.Name.Height + rowGap) - rowGap + pad;
         double left = hx + 12 + width > plot.Right ? hx - 12 - width : hx + 12;
         var box = new Rect(left, plot.Top + 4, width, height);
         var background = TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush ?? Brushes.White;
         dc.DrawRoundedRectangle(background, new Pen(TryFindResource("ControlStrokeColorDefaultBrush") as Brush ?? Brushes.Gray, 1), box, 6, 6);
-        double y = box.Top + 6;
-        dc.DrawText(header, new Point(box.Left + 8, y));
-        y += header.Height + 2;
-        foreach (var (color, ft) in texts)
+        double y = box.Top + pad;
+        dc.DrawText(header, new Point(box.Left + pad, y));
+        y += header.Height + 4;
+        double valueRight = box.Left + pad + swatch + names + gap + values;
+        foreach (var (color, name, value, range) in rows)
         {
-            dc.DrawRoundedRectangle(new SolidColorBrush(color), null, new Rect(box.Left + 8, y + ft.Height / 2 - 4, 8, 8), 2, 2);
-            dc.DrawText(ft, new Point(box.Left + 22, y));
-            y += ft.Height + 2;
+            dc.DrawRoundedRectangle(new SolidColorBrush(color), null, new Rect(box.Left + pad, y + name.Height / 2 - 4, 8, 8), 2, 2);
+            dc.DrawText(name, new Point(box.Left + pad + swatch, y));
+            dc.DrawText(value, new Point(valueRight - value.Width, y));
+            if (range is not null)
+                dc.DrawText(range, new Point(valueRight + 10, y));
+            y += name.Height + rowGap;
         }
     }
 

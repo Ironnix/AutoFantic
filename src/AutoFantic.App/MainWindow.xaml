@@ -213,6 +213,7 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Temperatures" Style="{StaticResource CardTitle}" />
+                            <TextBlock x:Name="LimitsNote" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                             <local:HistoryChart x:Name="TempChart" Height="220" Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
@@ -293,6 +294,7 @@
                             <TextBlock Text="Compared with earlier" Style="{StaticResource CardTitle}" />
                             <TextBlock x:Name="HealthCompareIntro" Style="{StaticResource Caption}" Margin="0,2,0,12" />
                             <Grid x:Name="HealthCompareRows" />
+                            <TextBlock x:Name="HealthCompareNote" Style="{StaticResource Caption}" Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}">
@@ -360,7 +362,10 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <CheckBox x:Name="AllowStop" Content="Switch off when the PC is idle and cool" />
+                                <CheckBox x:Name="BiosBox" Content="Let the BIOS control these fans" />
+                                <TextBlock x:Name="BiosHint" Style="{StaticResource Caption}" Margin="28,2,16,0" TextWrapping="Wrap" Visibility="Collapsed"
+                                           Text="AutoFantic leaves them alone, also when a temperature limit is crossed: the BIOS's own curve applies. The other fans stay with AutoFantic, and this curve is kept for when you switch back." />
+                                <CheckBox x:Name="AllowStop" Content="Switch off when the PC is idle and cool" Margin="0,10,0,0" />
                                 <TextBlock x:Name="StopHint" Style="{StaticResource Caption}" Margin="28,2,16,0" TextWrapping="Wrap" />
                                 <TextBlock x:Name="CurveHint" Style="{StaticResource Caption}" Margin="0,8,16,0"
                                            Text="Drag a point · double-click to add · right-click to remove. Applies right away." />

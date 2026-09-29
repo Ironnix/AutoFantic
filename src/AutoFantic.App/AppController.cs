@@ -531,6 +531,25 @@ internal sealed class AppController : IDisposable
         Apply();
     }
 
+    /// <summary>True if the user gave this group's fans to the BIOS.</summary>
+    public bool IsBios(int group) => Recommended is { } r && Overrides.IsBios(r.Groups[group]);
+
+    /// <summary>
+    /// Gives one group's fans to the BIOS (AutoFantic hands them back and leaves them alone, the
+    /// others carry on) or takes them back. Its curve is kept either way.
+    /// </summary>
+    public void SetBios(int group, bool bios)
+    {
+        if (Recommended is not { } r || IsBios(group) == bios)
+            return;
+        Overrides = Overrides.WithBios(r.Groups[group], bios);
+        Overrides.Save(Path.Combine(RunsPath, CalibrationFiles.Curves));
+        Log.Add(LogKind.Fans, bios
+            ? $"{r.Groups[group].Name}: given to the BIOS. AutoFantic leaves these fans alone; the other fans stay with AutoFantic."
+            : $"{r.Groups[group].Name}: AutoFantic controls these fans again.");
+        Apply();
+    }
+
     public void ResetCurve(int group)
     {
         if (Recommended is not { } r)

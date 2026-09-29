@@ -181,7 +181,7 @@ internal sealed class TrayIcon : IDisposable
         for (int i = 0; i < _fans.Count; i++)
         {
             var fan = i < status.Fans.Count ? status.Fans[i] : null;
-            _fans[i].Text = $"{_fans[i].Tag}: {fan?.Percent switch { null => "BIOS", 0 => "off", { } p => $"{p:0} %" }}";
+            _fans[i].Text = $"{_fans[i].Tag}: {MainWindow.Speed(fan)}";
         }
         _pause.Text = _app.UserPaused ? "Resume (AutoFantic controls the fans)" : "Pause (the BIOS controls the fans)";
         _pause.Enabled = _app.IsSetUp && !_app.Calibrating;

@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.0] - 30.09.2026
+## [0.1.7] - 30.09.2026
 
 ### New
 
@@ -11,6 +11,8 @@
 - **Monitor over a year:** *3 months* and *1 year* next to the other time ranges (the hourly values were already kept for 400 days).
 - **Cooling health in numbers:** the last 7 days against a week, 4 weeks, 3 months and a year ago, and against the first week after the calibration: °C warmer at full load and how much worse the cooling works in % (e.g. "+1.2 °C (+2.2 %)").
 - **Cooling health over a year:** the chart has *30 days*, *3 months* (per week) and *1 year*. Each day counts against the first week after its calibration, so a new calibration after cleaning starts again at 0.
+- **One fan back to the BIOS:** *Fan curves → Let the BIOS control these fans* hands just that fan (group) back to the BIOS; the others stay with AutoFantic. Its curve is kept for when you switch back, and the Overview shows what the BIOS runs it at ("BIOS 45 %").
+- The Monitor names AutoFantic's temperature limits and what the preset keeps the GPU and hotspot at. The values under the mouse are in neat columns.
 - *Start with Windows* says when it starts another copy of AutoFantic (for example an older one from before you unpacked it somewhere else).
 
 ### Good to know
