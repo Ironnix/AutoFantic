@@ -1,12 +1,10 @@
 # Changelog
 
-What changed in each version of AutoFantic, newest first. The newest section is also the text of its release on GitHub.
-
 <!-- For a release: give the section below its date, then push the tag (e.g. v0.1.0). The release build takes this section as its notes. -->
 
-## [0.1.0] - not released yet
+## [0.1.0] - 30.09.2026
 
-The first version for others to try. **Early development:** tested on one PC so far (Ryzen 7 9800X3D, RTX 3080, MSI mainboard with a Nuvoton NCT6686D). It controls your fans directly: use it at your own risk.
+The first version for others to try. **Early development:** tested on one PC so far (Ryzen 9800X3D, RTX 3080, Nuvoton NCT6686D). It controls your fans directly: use it at your own risk.
 
 ### What it does
 
