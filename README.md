@@ -33,9 +33,9 @@
 
 ## Getting started
 
-There is no download yet, so build it first (see *Build from source*). Then:
+Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases) (once there is one), unpack it anywhere and run `AutoFantic.exe`, or build it yourself (see *Build from source*). What changed in each version is in [CHANGELOG.md](CHANGELOG.md). Then:
 
-1. **Double-click `Start-AutoFantic.cmd`** and allow the admin prompt. The first time, the window opens on **Set up**.
+1. **Start `AutoFantic.exe`** (or, in a build from source, double-click `Start-AutoFantic.cmd`) and allow the admin prompt. The first time, the window opens on **Set up**.
 2. **Before you start:** the checks show whether AutoFantic can reach the mainboard and graphics card fans and whether another fan program is running. Fix what's marked, then *Check again*.
 3. **Step 1 · Find my fans** (about 2 minutes, best at idle), then **Step 2 · Calibrate** with your game or the built-in load (about 15 minutes). When it's done, AutoFantic controls your fans.
 4. When you close the window, AutoFantic keeps running as an icon next to the clock (right-click it for *Pause*, *Start with Windows* and *Exit*). Calibrate again from the window any time, for example with another game.
@@ -98,6 +98,8 @@ src/AutoFantic.App     the window, the tray icon and the watchdog (WPF)
 src/AutoFantic.Spike   the test console (developer tool)
 tests/                 unit tests for everything that doesn't need real hardware
 ```
+
+**Making a release:** give the version its section in `CHANGELOG.md` (`## [0.2.0] - date`), then push a tag `v0.2.0`. GitHub Actions (`.github/workflows/release.yml`) runs the tests, builds both exes and makes a **draft** pre-release with that section as its text; it's public only once you publish the draft on GitHub.
 
 The app can check itself without touching real fans: `AutoFantic.exe --simulate --selftest` (runs 5 s), `--simulate --selftest-calibration --sim-speed 60` (a whole first calibration), `--simulate --screenshot page.png --page overview|monitor|curves|reports|health|calibration|log|settings [--full]` (`--full` = the whole page, also what is scrolled out of view).
 

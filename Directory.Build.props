@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <Product>AutoFantic</Product>
+    <!-- the release version; a release build takes it from the git tag (v0.1.0 → 0.1.0) -->
+    <Version>0.1.0</Version>
     <Copyright>Copyright (c) 2026 Ironnix · MIT License</Copyright>
   </PropertyGroup>
 </Project>

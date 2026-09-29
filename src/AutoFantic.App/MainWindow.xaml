@@ -504,7 +504,8 @@
             <!-- settings -->
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="Settings" Style="{StaticResource Heading}" />
+                    <TextBlock Text="Settings" Style="{StaticResource Heading}" Margin="0" />
+                    <TextBlock x:Name="VersionText" Style="{StaticResource Caption}" Margin="0,2,0,16" />
 
                     <Border Style="{StaticResource Card}">
                         <Grid>

@@ -1,0 +1,63 @@
+# A release: push a tag like v0.1.0 and this builds the exe, runs the tests and makes a DRAFT
+# pre-release on GitHub with that version's section of CHANGELOG.md as its text. Nothing is
+# public until the draft is published by hand on GitHub (Releases → the draft → Publish).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # to create the release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Version from the tag
+        id: version
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $lines = Get-Content CHANGELOG.md -Encoding utf8
+          $start = [array]::FindIndex($lines, [Predicate[string]] { param($l) $l.StartsWith("## [$version]") })
+          if ($start -lt 0) { throw "CHANGELOG.md has no section '## [$version]': add one before tagging." }
+          $end = [array]::FindIndex($lines, $start + 1, [Predicate[string]] { param($l) $l.StartsWith("## [") })
+          if ($end -lt 0) { $end = $lines.Count }
+          $lines[($start + 1)..($end - 1)] | Set-Content notes.md -Encoding utf8
+
+      - name: Test
+        run: dotnet test -c Release
+
+      - name: Build
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          dotnet publish src/AutoFantic.App -c Release -o out -p:Version=$version
+          dotnet publish src/AutoFantic.Spike -c Release -o out -p:Version=$version
+
+      - name: Package
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          Remove-Item out/*.pdb
+          Copy-Item README.md, LICENSE, CHANGELOG.md out/
+          Compress-Archive -Path out/* -DestinationPath "AutoFantic-$version-win-x64.zip"
+
+      - name: Draft pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          gh release create "${{ github.ref_name }}" "AutoFantic-$version-win-x64.zip" --draft --prerelease --title "AutoFantic $version" --notes-file notes.md

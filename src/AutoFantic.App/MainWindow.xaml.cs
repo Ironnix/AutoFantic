@@ -163,6 +163,7 @@ public partial class MainWindow : Window
             if (_app.Log.FilePath is { } log && File.Exists(log))
                 OpenInExplorer(log);
         };
+        VersionText.Text = $"AutoFantic {AppVersion.Text} · early development · MIT License";
         DataPath.Text = _app.RunsPath + (File.Exists(Path.Combine(_app.RunsPath, DataFolder.MigratedNote))
             ? "  (copied from runs\\)"
             : "");

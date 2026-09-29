@@ -197,7 +197,7 @@ internal sealed class AppController : IDisposable
         {
             UnexpectedEnd = LastRunEndedBadly(log),
         };
-        log.Add(LogKind.Info, $"AutoFantic started{(simulate ? " (simulated PC)" : "")}: "
+        log.Add(LogKind.Info, $"AutoFantic {AppVersion.Text} started{(simulate ? " (simulated PC)" : "")}: "
             + (app.IsSetUp ? $"{app.Preset.Name}, {app.Effective!.Groups.Count} fan groups." : "not set up yet, the BIOS controls the fans."));
         foreach (var check in app.Checks.Where(c => c.Result >= CheckResult.Warning))
             log.Add(LogKind.Warning, $"{check.Title}: {check.Detail}");
@@ -349,7 +349,7 @@ internal sealed class AppController : IDisposable
         var entries = log.Entries;
         int previousStart = -1;
         for (int i = entries.Count - 1; i >= 0 && previousStart < 0; i--)
-            if (entries[i].Kind == LogKind.Info && entries[i].Text.StartsWith("AutoFantic started", StringComparison.Ordinal))
+            if (entries[i].Kind == LogKind.Info && entries[i].Text.StartsWith("AutoFantic ", StringComparison.Ordinal) && entries[i].Text.Contains(" started", StringComparison.Ordinal))
                 previousStart = i;
         return entries.Skip(previousStart + 1).LastOrDefault(e => e.Kind == LogKind.Watchdog)?.Text;
     }
