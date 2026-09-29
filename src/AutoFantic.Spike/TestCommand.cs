@@ -507,7 +507,8 @@ internal static class TestCommand
 
             What happens to the fans if AutoFantic crashes? A helper program sets a case fan and
             the GPU fan to 100 %. Then it is force-closed, exactly like Task Manager → End task,
-            and the tool checks whether the fans go back to normal, and whether "restore" helps.
+            and the tool checks whether the fans go back to normal, and whether AutoFantic's
+            watchdog hand-back (the fan chip's saved BIOS setup) brings them back.
 
             If a fan stays at full speed afterwards, restart the PC when it suits you. That's loud
             but harmless, and finding it out is the point of this test.
@@ -573,9 +574,13 @@ internal static class TestCommand
                 return;
             var afterCrash = session.Read();
 
-            Console.WriteLine("   trying \"restore\" …");
-            foreach (var target in targets)
-                session.ForceRestore(target);
+            Console.WriteLine("   handing the fans back like the watchdog does …");
+            if (Handback.RecoverIfNeeded(runs.Path, session, new ActivityLog(runs.Path), "the crash test") is null)
+            {
+                Console.WriteLine("   (the helper left no fans-in-use file: plain restore instead)");
+                foreach (var target in targets)
+                    session.ForceRestore(target);
+            }
             if (cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(15)))
                 return;
             var afterRestore = session.Read();
@@ -595,8 +600,8 @@ internal static class TestCommand
 
         report.AppendLine();
         report.AppendLine("\"back on its own\": the BIOS/driver took over after the crash, nothing to do.");
-        report.AppendLine("\"back after restore\": a crash leaves it stuck, but a restart of AutoFantic can fix it.");
-        report.AppendLine("\"STUCK\": only a PC restart brings the BIOS curve back; the watchdog must store the BIOS settings.");
+        report.AppendLine("\"back after restore\": a crash leaves it stuck, and the watchdog's hand-back fixes it.");
+        report.AppendLine("\"STUCK\": even the watchdog's hand-back didn't bring the BIOS curve back; only a PC restart does.");
 
         Console.WriteLine();
         Console.Write(report);
@@ -710,8 +715,8 @@ internal sealed class RunsFolder
     public string Path { get; }
 
     /// <summary>
-    /// runs\ in the repo (found by walking up from the exe to AutoFantic.sln), else runs\ next to
-    /// the exe. A simulated PC writes into runs\sim\, so its made-up data never mixes with real results.
+    /// The same data folder as the app (%LocalAppData%\AutoFantic). A simulated PC writes into its
+    /// sim\ subfolder, so its made-up data never mixes with real results.
     /// </summary>
     public static string Default(FanSession session) => DataFolder.Default(session is Core.Simulation.SimulatedPc);
 

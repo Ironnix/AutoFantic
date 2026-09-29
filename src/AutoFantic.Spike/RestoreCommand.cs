@@ -5,8 +5,9 @@ namespace AutoFantic.Spike;
 /// <summary>
 /// Emergency hand-back: asks every fan channel to return to BIOS / driver control.
 /// GPU fans reliably go back to the driver curve. For mainboard headers the library only knows
-/// the original BIOS setting within the run that changed it, so after a hard kill of an
-/// earlier run this may do nothing there; a restart always restores the BIOS setup.
+/// the original BIOS setting within the run that changed it: what a killed run left behind is
+/// handed back first from its fans-in-use file (Program.cs, like the watchdog); without that file
+/// this may do nothing there, and a restart always restores the BIOS setup.
 /// </summary>
 internal static class RestoreCommand
 {

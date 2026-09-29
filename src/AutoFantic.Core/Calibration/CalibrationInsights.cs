@@ -37,7 +37,24 @@ public static class CalibrationInsights
         Component.Cpu => "CPU",
         Component.GpuCore => "GPU",
         Component.GpuHotspot => "GPU hotspot",
+        Component.Warmest => "CPU or GPU (the warmer)",
         _ => "GPU memory",
+    };
+
+    /// <summary>What a curve's temperature axis is, in words: "CPU temperature", "GPU temperature" or "the warmer of CPU and GPU".</summary>
+    public static string FollowsName(Component c) => c switch
+    {
+        Component.Cpu => "CPU temperature",
+        Component.Warmest => "warmer of CPU and GPU",
+        _ => "GPU temperature",
+    };
+
+    /// <summary>The temperature a curve following <paramref name="c"/> is read at.</summary>
+    public static double? Followed(Component c, double? cpu, double? gpu) => c switch
+    {
+        Component.Cpu => cpu,
+        Component.Warmest => cpu is null ? gpu : gpu is null ? cpu : Math.Max(cpu.Value, gpu.Value),
+        _ => gpu,
     };
 
     /// <summary>Every stored run for these fans, newest calibration first, with its bottleneck under this profile.</summary>

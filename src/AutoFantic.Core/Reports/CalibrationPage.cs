@@ -227,7 +227,7 @@ public static class CalibrationPage
         double X(double t) => cl + plotW * (Math.Clamp(t, minT, maxT) - minT) / (maxT - minT);
         double Y(double p) => ct + plotH * (1 - p / 100);
 
-        string follows = group.Follows == Component.Cpu ? "CPU temperature" : "GPU temperature";
+        string follows = CalibrationInsights.FollowsName(group.Follows);
         html.Append($"<div class=\"card\"><h3>{E(group.Name)}</h3><p class=\"muted\">follows the {follows}" +
             (group.OffAt.Count > 0 ? $"; off at {E(string.Join(" + ", group.OffAt))} load" : "") + "</p>");
         html.Append($"<svg viewBox=\"0 0 {cw} {ch}\" role=\"img\" aria-label=\"{E(group.Name)} curve\">");
@@ -265,7 +265,7 @@ public static class CalibrationPage
     {
         html.Append("<h2>Use the curves without AutoFantic running</h2>");
         html.Append("<div class=\"card\"><h3>Mainboard fans: BIOS (e.g. MSI Smart Fan, 4 points, temperature source CPU)</h3><div class=\"table-wrap\"><table><thead><tr><th>fan</th><th>point 1</th><th>point 2</th><th>point 3</th><th>point 4</th></tr></thead><tbody>");
-        foreach (var g in result.Groups.Where(g => g.Follows == Component.Cpu))
+        foreach (var g in result.Groups.Where(g => g.Follows != Component.GpuCore))
         {
             html.Append($"<tr><td>{E(g.Name)}</td>");
             foreach (var p in CalibrationResult.BiosPoints(g.Curve))
@@ -273,7 +273,7 @@ public static class CalibrationPage
             html.Append("</tr>");
         }
         html.Append("</tbody></table></div>");
-        html.Append("<p class=\"note\">A BIOS curve can't switch a fan off at low load unless it offers a 0 % point or a \"fan stop\" option, and it can only follow CPU or mainboard temperatures, not the GPU.</p></div>");
+        html.Append("<p class=\"note\">A BIOS curve can't switch a fan off at low load unless it offers a 0 % point or a \"fan stop\" option, and it can only follow CPU or mainboard temperatures, not the GPU: a case fan curve that follows the warmer of CPU and GPU then runs by the CPU alone.</p></div>");
 
         html.Append("<div class=\"card\"><h3>Graphics card: MSI Afterburner custom fan curve (a BIOS can't control it)</h3><div class=\"table-wrap\"><table><thead><tr><th>fan</th><th>points (GPU temperature → speed)</th></tr></thead><tbody>");
         foreach (var g in result.Groups.Where(g => g.Follows == Component.GpuCore))

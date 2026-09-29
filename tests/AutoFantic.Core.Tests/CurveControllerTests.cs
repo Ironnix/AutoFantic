@@ -36,6 +36,20 @@ public class CurveControllerTests
     }
 
     [Fact]
+    public void Case_fans_follow_whichever_of_cpu_and_gpu_is_warmer()
+    {
+        var calibration = Calibration() with
+        {
+            Groups = [new CalibratedGroup("Case fans (#5)", [5], ["c5"], Component.Warmest, 11, 5, [new(40, 20), new(80, 100)], [])],
+        };
+        var c = new CurveController(calibration, [20]);
+
+        // a GPU-heavy game with a cool CPU: the case fans go by the GPU's 70 °C
+        Assert.Equal(80, c.Step(T0, Temps(cpu: 50, gpu: 70), 60, 300)[0], precision: 1);
+        Assert.Equal(70, c.Status[0].Temperature!.Value, precision: 1);
+    }
+
+    [Fact]
     public void Follows_the_curve_once_settled()
     {
         var c = Controller();

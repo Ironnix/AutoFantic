@@ -7,6 +7,12 @@ public enum Component
     GpuCore,
     GpuHotspot,
     GpuMemory,
+
+    /// <summary>
+    /// Not a sensor: whichever of the CPU and the GPU core is warmer. What fans that cool both (case
+    /// fans) follow. Never modelled, only followed by a curve.
+    /// </summary>
+    Warmest,
 }
 
 /// <summary>One calibration run: the fan speeds that were set and where each temperature settled.</summary>

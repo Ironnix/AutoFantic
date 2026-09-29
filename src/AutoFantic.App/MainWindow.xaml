@@ -102,6 +102,7 @@
                 <RadioButton x:Name="NavOverview" Style="{StaticResource Nav}" GroupName="nav" IsChecked="True" Content="Overview" />
                 <RadioButton x:Name="NavCurves" Style="{StaticResource Nav}" GroupName="nav" Content="Fan curves" />
                 <RadioButton x:Name="NavCalibration" Style="{StaticResource Nav}" GroupName="nav" Content="Calibration" />
+                <RadioButton x:Name="NavLog" Style="{StaticResource Nav}" GroupName="nav" Content="Activity" />
                 <RadioButton x:Name="NavSettings" Style="{StaticResource Nav}" GroupName="nav" Content="Settings" />
             </StackPanel>
         </DockPanel>
@@ -112,6 +113,11 @@
             <ScrollViewer x:Name="OverviewPage" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <TextBlock Text="Overview" Style="{StaticResource Heading}" />
+
+                    <!-- what the start-up checks found that needs a look (another fan program, a missing driver) -->
+                    <Border x:Name="NoticeCard" Style="{StaticResource Card}" Visibility="Collapsed">
+                        <StackPanel x:Name="NoticeRows" />
+                    </Border>
 
                     <Border Style="{StaticResource Card}">
                         <Grid>
@@ -226,11 +232,45 @@
             <!-- calibration -->
             <ScrollViewer x:Name="CalibrationPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="Calibration" Style="{StaticResource Heading}" />
+                    <TextBlock x:Name="CalibrationHeading" Text="Calibration" Style="{StaticResource Heading}" />
+
+                    <!-- before the first calibration: what to do, the checks, and step 1 -->
+                    <StackPanel x:Name="SetupCards" Visibility="Collapsed">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Welcome to AutoFantic" Style="{StaticResource CardTitle}" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                           Text="Until AutoFantic knows your PC, the BIOS keeps controlling the fans. Two steps, about 20 minutes: find out which outputs have fans, then calibrate once while you play (or with the built-in load). After that AutoFantic runs your fans by itself, and you can calibrate again any time." />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Before you start" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
+                                    <Button x:Name="SetupRecheck" Grid.Column="1" Content="Check again" Padding="14,6" />
+                                </Grid>
+                                <StackPanel x:Name="SetupChecks" Margin="0,12,0,0" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock x:Name="FindFansTitle" Text="Step 1 · Find my fans" Style="{StaticResource CardTitle}" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                           Text="Every fan output runs through 100, 60 and 30 % in turn, so AutoFantic learns which ones have a fan, how fast it turns and whether it can stop. About 2 minutes, best while the PC is idle; you'll hear the fans change." />
+                                <Button x:Name="SetupFindFans" Content="Find my fans" Style="{DynamicResource AccentButtonStyle}" Padding="18,9" MinWidth="170"
+                                        HorizontalAlignment="Left" Margin="0,16,0,0" />
+                                <StackPanel x:Name="FoundFans" Margin="0,14,0,0" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
 
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Calibrate" Style="{StaticResource CardTitle}" />
+                            <TextBlock x:Name="CalibrateTitle" Text="Calibrate" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
                                        Text="While your PC works, AutoFantic tries 9 combinations of fan speeds and learns what each fan cools. Every calibration adds to the ones before: a GPU-heavy game and a CPU-heavy render together teach both sides. Takes 15-30 minutes; you'll hear the fans change. If it gets too hot, all fans go to 100 % until it's cool again." />
                             <StackPanel x:Name="CalibrateSetup" Margin="0,16,0,0">
@@ -258,6 +298,8 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- what a calibration found: only once there is one -->
+                    <StackPanel x:Name="InsightCards">
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Why these settings" Style="{StaticResource CardTitle}" />
@@ -292,13 +334,51 @@
                             <StackPanel x:Name="RunRows" />
                         </StackPanel>
                     </Border>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
+
+            <!-- activity: what AutoFantic did -->
+            <Grid x:Name="LogPage" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Activity" Style="{StaticResource Heading}" />
+                <Grid Grid.Row="1" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,16,0"
+                               Text="What AutoFantic did, newest first: safety stops, sensor problems, fans switching off and on, calibrations, pauses, and what the watchdog did after a crash." />
+                    <Button x:Name="OpenLogFile" Grid.Column="1" Content="Open the log file" Padding="16,9" />
+                </Grid>
+                <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0" Padding="20,14">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="LogRows" />
+                    </ScrollViewer>
+                </Border>
+            </Grid>
 
             <!-- settings -->
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <TextBlock Text="Settings" Style="{StaticResource Heading}" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="System check" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
+                                <Button x:Name="SettingsRecheck" Grid.Column="1" Content="Check again" Padding="14,6" />
+                            </Grid>
+                            <StackPanel x:Name="SettingsChecks" Margin="0,12,0,0" />
+                        </StackPanel>
+                    </Border>
                     <Border Style="{StaticResource Card}">
                         <Grid>
                             <Grid.ColumnDefinitions>

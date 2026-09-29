@@ -47,7 +47,7 @@ public static class CalibrationCalculator
         return new CalibrationResult(
             DateTimeOffset.Now, profile.Name, ambient, calibrated, table,
             model.Components.ToDictionary(c => c, c => model.Coefficients(c).ToArray()),
-            stopCpu, stopGpu, model.Rms, sources);
+            stopCpu, stopGpu, model.Rms, sources, CalibrationResult.CurrentVersion);
     }
 
     /// <summary>What a group cools (at the highest load), the temperature it follows, its curve and when it's off.</summary>
@@ -58,22 +58,35 @@ public static class CalibrationCalculator
             model.Components.Contains(c) ? power * model.Coefficients(c)[index + 1] * (ThermalModel.Basis(low) - ThermalModel.Basis(100)) : 0;
 
         double cpu = Effect(Component.Cpu, cpuPower), gpu = Effect(Component.GpuCore, gpuPower);
+        var follows = Follows(group, cpu, gpu);
 
-        // GPU fans follow the GPU; mainboard fans follow the CPU, the one temperature every BIOS can
-        // use, and one that rises steadily with the load levels
-        var follows = group.IsGpu ? Component.GpuCore : Component.Cpu;
-
-        // just above the target everything runs flat out: covers any task hotter than the calibration
+        // just above the target everything runs flat out: covers any task hotter than the calibration.
+        // A fan following the warmer of the two goes by the higher target, or in Silent (CPU 87, GPU 82)
+        // a CPU that is exactly as warm as planned would already run the case fans flat out
         var limits = new SafetyLimits();
-        double safety = follows == Component.Cpu ? limits.CpuMax : limits.GpuCoreMax;
-        double fullSpeedAt = Math.Min(profile.Target(follows) + 2, safety - 2);
+        double fullSpeedAt = follows switch
+        {
+            Component.Cpu => Math.Min(profile.Target(Component.Cpu) + 2, limits.CpuMax - 2),
+            Component.Warmest => Math.Min(Math.Max(profile.Target(Component.Cpu), profile.Target(Component.GpuCore)) + 2, limits.CpuMax - 2),
+            _ => Math.Min(profile.Target(Component.GpuCore) + 2, limits.GpuCoreMax - 2),
+        };
 
         return new CalibratedGroup(
             group.Name,
             group.Headers.Select(h => h.Channel).ToList(),
             group.Headers.Select(h => h.ControlId).ToList(),
             follows, cpu, gpu,
-            CalibrationResult.CurveFor(table, index, follows, fullSpeedAt),
+            CalibrationResult.CurveFor(table, index, follows, fullSpeedAt, CalibrationResult.MaxSlope),
             table.Where(r => r.Speeds[index] == 0).Select(r => r.Label).ToList());
     }
+
+    /// <summary>
+    /// GPU fans follow the GPU. A mainboard fan that clearly cools the GPU too (case fans: at least
+    /// 2 °C, and at least a quarter of what it does for the CPU) follows whichever is warmer, so a
+    /// GPU-heavy game with a cool CPU still gets the airflow. The others (the CPU cooler) follow the CPU.
+    /// </summary>
+    public static Component Follows(FanGroup group, double cpuEffect, double gpuEffect) =>
+        group.IsGpu ? Component.GpuCore
+        : gpuEffect >= 2 && gpuEffect >= 0.25 * cpuEffect ? Component.Warmest
+        : Component.Cpu;
 }

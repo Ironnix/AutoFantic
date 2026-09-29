@@ -7,8 +7,11 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using AutoFantic.Core;
 using AutoFantic.Core.Calibration;
 using AutoFantic.Core.Control;
+using AutoFantic.Core.Hardware;
+using AutoFantic.Core.Logging;
 using AutoFantic.Core.Reports;
 using Color = System.Windows.Media.Color;
 using Orientation = System.Windows.Controls.Orientation;
@@ -22,8 +25,10 @@ namespace AutoFantic.App;
 
 /// <summary>
 /// The AutoFantic window: what the fans do right now (Overview), their curves to look at and to
-/// set (Fan curves), calibrating and why the settings are what they are (Calibration), and the
-/// few settings plus developer tools. Everything it changes goes through <see cref="AppController"/>.
+/// set (Fan curves), calibrating and why the settings are what they are (Calibration), what
+/// AutoFantic did (Activity), and the few settings plus developer tools. Before the first
+/// calibration the Calibration page is the set-up (checks, find my fans, calibrate) and there are
+/// no curves yet. Everything it changes goes through <see cref="AppController"/>.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -38,9 +43,14 @@ public partial class MainWindow : Window
     private static readonly SolidColorBrush Paused = new(Color.FromRgb(0x8a, 0x89, 0x84));
     private static readonly SolidColorBrush Cooling = new(Color.FromRgb(0xeb, 0x68, 0x34));
     private static readonly SolidColorBrush Problem = new(Color.FromRgb(0xe3, 0x49, 0x48));
+    private static readonly SolidColorBrush SetUp = new(Color.FromRgb(0x2a, 0x78, 0xd6));
+    private static readonly SolidColorBrush Attention = new(Color.FromRgb(0xed, 0xa1, 0x00));
 
     // loudness choices for "Your fans": label → dB correction
     private static readonly (string Label, double Db)[] LoudnessChoices = [("quiet", -5), ("normal", 0), ("loud", 5)];
+
+    // how many log entries the Activity page shows
+    private const int LogShown = 300;
 
     private readonly AppController _app;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -48,6 +58,8 @@ public partial class MainWindow : Window
     private readonly List<ToggleButton> _tabs = [];
     private readonly List<(ToggleButton Button, Preset Preset)> _presets = [];
     private readonly Queue<string> _log = new();
+    private IReadOnlyList<string> _groupsShown = [];
+    private bool _wasSetUp;
     private int _selected;
     private bool _building;
 
@@ -59,10 +71,16 @@ public partial class MainWindow : Window
         NavOverview.Checked += (_, _) => ShowOnly(OverviewPage);
         NavCurves.Checked += (_, _) => ShowOnly(CurvesPage);
         NavCalibration.Checked += (_, _) => ShowOnly(CalibrationPage);
+        NavLog.Checked += (_, _) => ShowOnly(LogPage);
         NavSettings.Checked += (_, _) => ShowOnly(SettingsPage);
 
         PauseButton.Click += (_, _) =>
         {
+            if (!_app.IsSetUp)
+            {
+                ShowPage("calibration");
+                return;
+            }
             _app.UserPaused = !_app.UserPaused;
             UpdateLive();
         };
@@ -70,12 +88,19 @@ public partial class MainWindow : Window
         // drawing a point down to 0 % means "off here": that switches stopping on where the fan can stop
         Editor.CurveEdited += curve => _app.SetCurve(_selected, curve,
             AllowStop.IsChecked == true || (curve.Count > 0 && curve[0].Percent <= 0 && _app.CanStop(_selected)));
-        AllowStop.Click += (_, _) => _app.SetCurve(_selected, _app.Effective.Groups[_selected].Curve, AllowStop.IsChecked == true);
+        AllowStop.Click += (_, _) =>
+        {
+            if (_app.Effective is { } effective)
+                _app.SetCurve(_selected, effective.Groups[_selected].Curve, AllowStop.IsChecked == true);
+        };
         ResetCurve.Click += (_, _) => _app.ResetCurve(_selected);
 
         StartCalibrationButton.Click += (_, _) => StartCalibration();
         StopCalibrationButton.Click += (_, _) => _app.StopCalibration();
-        RoomTemp.Text = _app.Recommended.Ambient.ToString("0", CultureInfo.InvariantCulture);
+        RoomTemp.Text = (_app.Recommended?.Ambient ?? 22).ToString("0", CultureInfo.InvariantCulture);
+        SetupFindFans.Click += (_, _) => FindFans();
+        SetupRecheck.Click += (_, _) => Recheck();
+        SettingsRecheck.Click += (_, _) => Recheck();
 
         AutostartBox.IsChecked = Autostart.IsEnabled();
         AutostartBox.Click += (_, _) =>
@@ -87,7 +112,14 @@ public partial class MainWindow : Window
         };
         OpenPage.Click += (_, _) => OpenInExplorer(_app.PagePath);
         OpenFolder.Click += (_, _) => OpenInExplorer(_app.RunsPath);
-        DataPath.Text = _app.RunsPath;
+        OpenLogFile.Click += (_, _) =>
+        {
+            if (_app.Log.FilePath is { } log && File.Exists(log))
+                OpenInExplorer(log);
+        };
+        DataPath.Text = _app.RunsPath + (File.Exists(Path.Combine(_app.RunsPath, DataFolder.MigratedNote))
+            ? "  ·  earlier versions kept it in runs\\ next to the program; it was copied here once"
+            : "");
         FindFansButton.Click += (_, _) => FindFans();
         SensorsButton.Click += (_, _) => ShowSensors();
         ConsoleButton.Click += (_, _) => OpenConsole();
@@ -96,6 +128,7 @@ public partial class MainWindow : Window
         _app.CalibrationProgress += OnCalibrationProgress;
         _app.CalibrationLog += OnCalibrationLog;
         _app.CalibrationEnded += OnCalibrationEnded;
+        _app.Log.Added += OnLogAdded;
         Closed += (_, _) =>
         {
             _timer.Stop();
@@ -103,15 +136,16 @@ public partial class MainWindow : Window
             _app.CalibrationProgress -= OnCalibrationProgress;
             _app.CalibrationLog -= OnCalibrationLog;
             _app.CalibrationEnded -= OnCalibrationEnded;
+            _app.Log.Added -= OnLogAdded;
         };
 
-        BuildFanRows();
-        BuildTabs();
         BuildPresets();
-        SelectCurve(0);
+        UpdateStructure();
         UpdatePresets();
         UpdateCalibrationInfo();
         BuildInsights();
+        BuildChecks();
+        BuildLog();
         UpdateCalibrationState();
 
         _timer.Tick += (_, _) => UpdateLive();
@@ -119,14 +153,53 @@ public partial class MainWindow : Window
         UpdateLive();
     }
 
-    /// <summary>"overview", "curves", "calibration" or "settings".</summary>
+    /// <summary>"overview", "curves", "calibration", "log" or "settings".</summary>
     public void ShowPage(string page) =>
-        (page switch { "curves" => NavCurves, "calibration" => NavCalibration, "settings" => NavSettings, _ => NavOverview }).IsChecked = true;
+        (page switch
+        {
+            "curves" when _app.IsSetUp => NavCurves,
+            "calibration" or "setup" => NavCalibration,
+            "log" or "activity" => NavLog,
+            "settings" => NavSettings,
+            _ => NavOverview,
+        }).IsChecked = true;
 
     private void ShowOnly(FrameworkElement page)
     {
-        foreach (var p in new FrameworkElement[] { OverviewPage, CurvesPage, CalibrationPage, SettingsPage })
+        foreach (var p in new FrameworkElement[] { OverviewPage, CurvesPage, CalibrationPage, LogPage, SettingsPage })
             p.Visibility = p == page ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// What depends on whether AutoFantic is set up and on which fan groups there are: the
+    /// navigation, the set-up cards, the fan rows and the curve tabs. Rebuilt only when that changes
+    /// (the fans were found, the first calibration finished, the fans changed).
+    /// </summary>
+    private void UpdateStructure()
+    {
+        bool setUp = _app.IsSetUp;
+        NavCurves.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
+        NavCalibration.Content = setUp ? "Calibration" : "Set up";
+        CalibrationHeading.Text = setUp ? "Calibration" : "Set up AutoFantic";
+        SetupCards.Visibility = setUp ? Visibility.Collapsed : Visibility.Visible;
+        InsightCards.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
+        CalibrateTitle.Text = setUp ? "Calibrate" : "Step 2 · Calibrate";
+        BuildFoundFans();
+
+        if (setUp && !_wasSetUp && NavCurves.IsChecked == false && NavCalibration.IsChecked == true && IsLoaded)
+            ShowPage("overview"); // just calibrated for the first time: now there's something to see
+        if (!setUp && NavCurves.IsChecked == true)
+            ShowPage("calibration");
+        _wasSetUp = setUp;
+
+        var groups = _app.GroupNames;
+        if (groups.SequenceEqual(_groupsShown))
+            return;
+        _groupsShown = groups;
+        BuildFanRows();
+        BuildTabs();
+        if (setUp)
+            SelectCurve(_selected);
     }
 
     // ── overview ───────────────────────────────────────────────────────────────────────
@@ -135,8 +208,13 @@ public partial class MainWindow : Window
     {
         FanRows.Children.Clear();
         _fanRows.Clear();
-        var groups = _app.Effective.Groups;
-        for (int g = 0; g < groups.Count; g++)
+        var names = _app.GroupNames;
+        if (names.Count == 0)
+        {
+            FanRows.Children.Add(new TextBlock { Text = "No fans found yet: Set up → Find my fans.", Style = (Style)FindResource("Caption") });
+            return;
+        }
+        for (int g = 0; g < names.Count; g++)
         {
             var row = new Grid { Margin = new Thickness(0, 0, 0, 16) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
@@ -145,8 +223,12 @@ public partial class MainWindow : Window
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
 
             var name = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            name.Children.Add(new TextBlock { Text = groups[g].Name, FontSize = 14 });
-            name.Children.Add(new TextBlock { Text = CalibrationReport.Role(groups[g]), Style = (Style)FindResource("Caption") });
+            name.Children.Add(new TextBlock { Text = names[g], FontSize = 14 });
+            name.Children.Add(new TextBlock
+            {
+                Text = _app.Recommended is { } r ? CalibrationReport.Role(r.Groups[g]) : "the BIOS controls it until the first calibration",
+                Style = (Style)FindResource("Caption"),
+            });
             var bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 6, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 16, 0) };
             var value = new TextBlock { FontSize = 15, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
 
@@ -190,6 +272,7 @@ public partial class MainWindow : Window
             ? (Cooling, "Calibrating", "The calibration drives the fans right now. See the Calibration page.")
             : status.State switch
             {
+                LoopState.NotSetUp => (SetUp, "Not set up yet", "The BIOS controls your fans until AutoFantic knows your PC: find your fans and calibrate once (about 20 minutes)."),
                 LoopState.Paused => (Paused, _app.Sleeping ? "Paused for sleep" : "Paused", "The BIOS controls the fans. Resume to hand them back to AutoFantic."),
                 LoopState.CoolingDown => (Cooling, "Cooling down", "A temperature limit was reached: all fans run at 100 % until it's safely cool again."),
                 LoopState.SensorProblem => (Problem, "Sensor problem", "A temperature sensor stopped reporting: the BIOS controls the fans for now; AutoFantic tries again every minute."),
@@ -199,26 +282,28 @@ public partial class MainWindow : Window
         LogoDot.Fill = brush;
         StateTitle.Text = title;
         StateDetail.Text = detail;
-        PauseButton.Content = _app.UserPaused ? "Resume" : "Pause";
+        PauseButton.Content = !_app.IsSetUp ? "Set up" : _app.UserPaused ? "Resume" : "Pause";
         PauseButton.IsEnabled = !_app.Calibrating;
 
         CpuTemp.Text = Temp(status.CpuTemp);
         GpuTemp.Text = Temp(status.GpuTemp);
         CpuPower.Text = $"{status.CpuPower:0} W";
         GpuPower.Text = $"{status.GpuPower:0} W";
-        SideStatus.Text = $"{_app.Effective.Profile} · {status.Time:HH:mm:ss}";
+        SideStatus.Text = $"{(_app.Effective?.Profile ?? "not set up")} · {status.Time:HH:mm:ss}";
 
-        for (int i = 0; i < _fanRows.Count && i < status.Fans.Count; i++)
+        for (int i = 0; i < _fanRows.Count; i++)
         {
-            double? percent = _app.Calibrating ? null : status.Fans[i].Percent;
+            double? percent = _app.Calibrating || i >= status.Fans.Count ? null : status.Fans[i].Percent;
             _fanRows[i].Bar.Value = percent ?? 0;
             _fanRows[i].Value.Text = _app.Calibrating ? "test" : percent switch { null => "BIOS", 0 => "off", { } p => $"{p:0} %" };
         }
 
         // the ring sits at the smoothed temperature the fan control reads the curve at
-        var group = _app.Effective.Groups[Math.Min(_selected, _app.Effective.Groups.Count - 1)];
+        if (_app.Effective is not { } effective || effective.Groups.Count == 0)
+            return;
+        var group = effective.Groups[Math.Min(_selected, effective.Groups.Count - 1)];
         var fan = _selected < status.Fans.Count ? status.Fans[_selected] : null;
-        double? followed = fan?.Status?.Temperature ?? (group.Follows == Component.Cpu ? status.CpuTemp : status.GpuTemp);
+        double? followed = fan?.Status?.Temperature ?? CalibrationInsights.Followed(group.Follows, status.CpuTemp, status.GpuTemp);
         Editor.Live = followed is { } t && fan is not null && !_app.Calibrating ? (t, fan.Percent, Note(fan.Status)) : null;
         Editor.Refresh();
     }
@@ -238,15 +323,19 @@ public partial class MainWindow : Window
         var current = _app.Preset;
         foreach (var (button, preset) in _presets)
         {
-            button.IsChecked = preset.Id == current.Id;
+            button.IsChecked = _app.IsSetUp && preset.Id == current.Id;
             button.IsEnabled = _app.CanSwitchPreset && !_app.Calibrating;
         }
         ProfileNote.Visibility = _app.CanSwitchPreset ? Visibility.Collapsed : Visibility.Visible;
-        ProfileNote.Text = "Switching needs stored measurements: run one calibration with this version first.";
+        ProfileNote.Text = _app.IsSetUp
+            ? "Switching needs stored measurements: run one calibration with this version first."
+            : $"The presets work once AutoFantic is calibrated. The first calibration uses {current.Name}; you can switch any time afterwards.";
 
         var profile = current.Profile;
-        LimitValue.Text = current.Name;
-        LimitDetail.Text = profile.MaxCooling ? "every fan up to its knee" : $"CPU ≤ {profile.Cpu:0} °C · GPU ≤ {profile.GpuCore:0} °C";
+        LimitValue.Text = _app.IsSetUp ? current.Name : "–";
+        LimitDetail.Text = !_app.IsSetUp ? "after the first calibration"
+            : profile.MaxCooling ? "every fan up to its knee"
+            : $"CPU ≤ {profile.Cpu:0} °C · GPU ≤ {profile.GpuCore:0} °C";
     }
 
     private void SwitchPreset(Preset preset)
@@ -265,7 +354,7 @@ public partial class MainWindow : Window
     {
         CurveTabs.Children.Clear();
         _tabs.Clear();
-        var groups = _app.Effective.Groups;
+        var groups = _app.Effective?.Groups ?? [];
         for (int g = 0; g < groups.Count; g++)
         {
             int index = g;
@@ -281,28 +370,30 @@ public partial class MainWindow : Window
 
     private void SelectCurve(int index)
     {
-        _selected = Math.Min(index, _app.Effective.Groups.Count - 1);
+        if (_app.Effective is not { } all || _app.Recommended is not { } recommendedAll || all.Groups.Count == 0)
+            return;
+        _selected = Math.Clamp(index, 0, all.Groups.Count - 1);
         for (int i = 0; i < _tabs.Count; i++)
             _tabs[i].IsChecked = i == _selected;
 
-        var effective = _app.Effective.Groups[_selected];
-        var recommended = _app.Recommended.Groups[_selected];
+        var effective = all.Groups[_selected];
+        var recommended = recommendedAll.Groups[_selected];
         var color = Palette[_selected % Palette.Length];
 
         Editor.Color = color;
-        Editor.TemperatureLabel = effective.Follows == Component.Cpu ? "CPU temperature" : "GPU temperature";
+        Editor.TemperatureLabel = Capitalize(CalibrationInsights.FollowsName(effective.Follows));
         Editor.SetCurves(effective.Curve, recommended.Curve);
 
         bool custom = _app.IsCustom(_selected);
         CurveTitle.Text = effective.Name;
-        CurveSubtitle.Text = $"Follows the {(effective.Follows == Component.Cpu ? "CPU" : "GPU")} temperature · {CalibrationReport.Role(effective)} · "
+        CurveSubtitle.Text = $"Follows the {CalibrationInsights.FollowsName(effective.Follows)} · {CalibrationReport.Role(effective)} · "
             + (custom ? "your own curve" : "the recommended curve");
         LegendUse.Fill = new SolidColorBrush(color);
         LegendRecommended.Stroke = new SolidColorBrush(Color.FromArgb(0x90, color.R, color.G, color.B));
 
         bool canStop = _app.CanStop(_selected), allows = _app.AllowsStop(_selected);
         double offAt = CurveController.OffTemperature(effective);
-        string part = effective.Follows == Component.Cpu ? "CPU" : "GPU";
+        string part = CalibrationInsights.Name(effective.Follows);
         AllowStop.IsEnabled = canStop;
         AllowStop.IsChecked = allows;
         StopHint.Text = !canStop
@@ -318,13 +409,14 @@ public partial class MainWindow : Window
 
     private void OnCurvesChanged() => Dispatcher.BeginInvoke(() =>
     {
+        UpdateStructure();
         SelectCurve(_selected);
         UpdatePresets();
         UpdateCalibrationInfo();
         BuildInsights();
     });
 
-    // ── calibration ────────────────────────────────────────────────────────────────────
+    // ── calibration and set-up ─────────────────────────────────────────────────────────
 
     private void StartCalibration()
     {
@@ -357,23 +449,102 @@ public partial class MainWindow : Window
     private void UpdateCalibrationState()
     {
         bool running = _app.Calibrating;
-        StartCalibrationButton.IsEnabled = !running;
+        // the first calibration waits for step 1, so the user sees what was found first
+        StartCalibrationButton.IsEnabled = !running && (_app.IsSetUp || _app.Inventory is not null);
+        StartCalibrationButton.ToolTip = StartCalibrationButton.IsEnabled || running ? null : "Find your fans first (step 1).";
         StopCalibrationButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         CalibrateSetup.IsEnabled = !running;
         CalibrationLive.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         CalibrationLogText.Visibility = _log.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         FindFansButton.IsEnabled = !running;
+        SetupFindFans.IsEnabled = !running;
         foreach (var (button, _) in _presets)
             button.IsEnabled = _app.CanSwitchPreset && !running;
+    }
+
+    /// <summary>Step 1's result before the first calibration: the fan groups found, each with how fast it turns and whether it can stop.</summary>
+    private void BuildFoundFans()
+    {
+        FoundFans.Children.Clear();
+        var groups = _app.Inventory?.Groups() ?? [];
+        FindFansTitle.Text = groups.Count > 0 ? "Step 1 · Find my fans  ✓" : "Step 1 · Find my fans";
+        SetupFindFans.Content = groups.Count > 0 ? "Find my fans again" : "Find my fans";
+        FoundFans.Visibility = groups.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        for (int g = 0; g < groups.Count; g++)
+        {
+            var group = groups[g];
+            float top = group.Headers.Max(h => h.Rpm.Count > 0 ? h.Rpm.Max(p => p.Rpm) : 0);
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            row.Children.Add(Dot(g));
+            row.Children.Add(new TextBlock { Text = group.Name, FontSize = 14, Margin = new Thickness(0, 0, 10, 0) });
+            row.Children.Add(new TextBlock
+            {
+                Text = $"up to {top:0} rpm · " + (group.CanStop ? "can stop at 0 %" : "keeps turning at 0 %"),
+                Style = (Style)FindResource("Caption"),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            FoundFans.Children.Add(row);
+        }
+        if (groups.Count > 0)
+            FoundFans.Children.Add(new TextBlock
+            {
+                Text = "Several fans on one output (a hub or splitter) or a loud fan? Say so on the Calibration page after calibrating, under \"Your fans\".",
+                Style = (Style)FindResource("Caption"),
+                Margin = new Thickness(0, 6, 0, 0),
+            });
+    }
+
+    private void Recheck()
+    {
+        Cursor = System.Windows.Input.Cursors.Wait;
+        _app.RefreshChecks();
+        Cursor = null;
+        BuildChecks();
+    }
+
+    /// <summary>The start-up checks, on the set-up page and in Settings; the ones that need a look also on the Overview.</summary>
+    private void BuildChecks()
+    {
+        foreach (var host in new[] { SetupChecks, SettingsChecks })
+        {
+            host.Children.Clear();
+            foreach (var check in _app.Checks)
+                host.Children.Add(CheckRow(check));
+        }
+
+        NoticeRows.Children.Clear();
+        foreach (var check in _app.Checks.Where(c => c.Result >= CheckResult.Warning))
+            NoticeRows.Children.Add(CheckRow(check));
+        NoticeCard.Visibility = NoticeRows.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private FrameworkElement CheckRow(SetupCheck check)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var (glyph, brush) = check.Result switch
+        {
+            CheckResult.Ok => ("✓", Running),
+            CheckResult.Info => ("i", Paused),
+            CheckResult.Warning => ("!", Attention),
+            _ => ("✕", Problem),
+        };
+        row.Children.Add(new TextBlock { Text = glyph, Foreground = brush, FontSize = 15, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Top });
+        var text = new StackPanel();
+        text.Children.Add(new TextBlock { Text = check.Title, FontSize = 14 });
+        text.Children.Add(new TextBlock { Text = check.Detail, Style = (Style)FindResource("Caption") });
+        Place(row, text, 1);
+        return row;
     }
 
     private void OnCalibrationProgress(CalibrationProgress p) => Dispatcher.BeginInvoke(() =>
     {
         CalibrationStatus.Text = p.Message;
         CalibrationBar.Value = p.Done;
-        if (p.Speeds is { } speeds)
+        if (p.Speeds is { } speeds && _app.Inventory is { } inventory)
         {
-            var groups = _app.Inventory.Groups();
+            var groups = inventory.Groups();
             CalibrationSpeeds.Text = "Fans now: " + string.Join(" · ", groups.Select((g, i) => i < speeds.Count ? $"{g.Name} {speeds[i]:0} %" : g.Name));
         }
         else
@@ -400,6 +571,7 @@ public partial class MainWindow : Window
 
     private void OnCalibrationEnded(CalibrationOutcome outcome) => Dispatcher.BeginInvoke(() =>
     {
+        UpdateStructure();
         UpdateCalibrationState();
         UpdatePresets();
         BuildInsights();
@@ -451,7 +623,7 @@ public partial class MainWindow : Window
     private void BuildLoudness()
     {
         LoudnessRows.Children.Clear();
-        var groups = _app.Inventory.Groups();
+        var groups = _app.Inventory?.Groups() ?? [];
         for (int g = 0; g < groups.Count; g++)
         {
             int index = g;
@@ -495,7 +667,9 @@ public partial class MainWindow : Window
     private void BuildEffects()
     {
         EffectRows.Children.Clear();
-        var groups = _app.Recommended.Groups;
+        var groups = _app.Recommended?.Groups ?? [];
+        if (groups.Count == 0)
+            return;
         double max = Math.Max(1, groups.Max(g => Math.Max(g.CpuEffect, g.GpuEffect)));
         foreach (var (group, g) in groups.Select((x, i) => (x, i)))
         {
@@ -511,7 +685,7 @@ public partial class MainWindow : Window
             row.Children.Add(Dot(g));
             var name = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             name.Children.Add(new TextBlock { Text = group.Name, FontSize = 14 });
-            name.Children.Add(new TextBlock { Text = CalibrationReport.Role(group), Style = (Style)FindResource("Caption") });
+            name.Children.Add(new TextBlock { Text = $"{CalibrationReport.Role(group)} · follows the {CalibrationInsights.FollowsName(group.Follows)}", Style = (Style)FindResource("Caption") });
             Place(row, name, 1);
             Place(row, bars, 2);
             EffectRows.Children.Add(row);
@@ -544,7 +718,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var names = _app.Inventory.Groups().Select(g => g.IsGpu ? "GPU" : $"#{g.Headers[0].Channel}").ToList();
+        var names = _app.Inventory!.Groups().Select(g => g.IsGpu ? "GPU" : $"#{g.Headers[0].Channel}").ToList();
         RunRows.Children.Add(RunRow(true, "When", "Load", string.Join(" · ", names) + " (%)", "CPU / GPU W", "CPU / GPU °C", "Bottleneck", false));
         string? lastSource = null;
         foreach (var run in runs)
@@ -578,14 +752,65 @@ public partial class MainWindow : Window
         return row;
     }
 
+    // ── activity ───────────────────────────────────────────────────────────────────────
+
+    private void BuildLog()
+    {
+        LogRows.Children.Clear();
+        var entries = _app.Log.Entries;
+        foreach (var entry in entries.Reverse().Take(LogShown))
+            LogRows.Children.Add(LogRow(entry));
+        if (entries.Count == 0)
+            LogRows.Children.Add(new TextBlock { Text = "Nothing yet.", Style = (Style)FindResource("Caption") });
+    }
+
+    private void OnLogAdded(ActivityEntry entry) => Dispatcher.BeginInvoke(() =>
+    {
+        if (LogRows.Children.Count == 1 && LogRows.Children[0] is TextBlock)
+            LogRows.Children.Clear(); // "Nothing yet."
+        LogRows.Children.Insert(0, LogRow(entry));
+        while (LogRows.Children.Count > LogShown)
+            LogRows.Children.RemoveAt(LogRows.Children.Count - 1);
+    });
+
+    private FrameworkElement LogRow(ActivityEntry entry)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(118) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(104) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var time = entry.Time.ToLocalTime();
+        row.Children.Add(new TextBlock
+        {
+            Text = time.Date == DateTime.Today ? $"today {time:HH:mm:ss}" : $"{time:dd.MM. HH:mm:ss}",
+            Style = (Style)FindResource("Caption"),
+        });
+        var brush = entry.Kind switch
+        {
+            LogKind.Safety or LogKind.Watchdog => Cooling,
+            LogKind.Sensor => Problem,
+            LogKind.Warning => Attention,
+            LogKind.Fans => Running,
+            LogKind.Calibration => SetUp,
+            _ => Paused,
+        };
+        var kind = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
+        kind.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = brush, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+        kind.Children.Add(new TextBlock { Text = entry.Kind.ToString(), FontSize = 13 });
+        Place(row, kind, 1);
+        Place(row, new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, FontSize = 13.5 }, 2);
+        return row;
+    }
+
     // ── settings ───────────────────────────────────────────────────────────────────────
 
     private void UpdateCalibrationInfo()
     {
-        var sources = _app.Recommended.Sources ?? [];
-        CalibrationInfo.Text = sources.Count == 0
-            ? $"Calibrated {_app.Recommended.Created:dd.MM.yyyy HH:mm}."
+        var sources = _app.Recommended?.Sources ?? [];
+        CalibrationInfo.Text = _app.Recommended is not { } r ? "Not calibrated yet."
+            : sources.Count == 0 ? $"Calibrated {r.Created:dd.MM.yyyy HH:mm}."
             : $"{_app.Store.Calibrations.Count} calibration(s), {_app.Store.Runs.Count} runs: " + string.Join("; ", sources);
+        OpenPage.IsEnabled = File.Exists(_app.PagePath);
     }
 
     private void ShowSensors()

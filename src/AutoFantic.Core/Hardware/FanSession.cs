@@ -8,9 +8,16 @@ namespace AutoFantic.Core.Hardware;
 public abstract class FanSession : IDisposable
 {
     private readonly HashSet<FanChannel> _touched = [];
+    private DateTimeOffset _touchedSince;
     private bool _disposed;
 
     protected Lock Sync { get; } = new();
+
+    /// <summary>
+    /// Where to keep fans-in-use.json (<see cref="HandbackFile"/>) while this session drives any fan,
+    /// so a watchdog can hand them back if the process dies; null keeps no file.
+    /// </summary>
+    public string? HandbackPath { get; set; }
 
     public abstract IReadOnlyList<FanChannel> Channels { get; }
 
@@ -56,8 +63,10 @@ public abstract class FanSession : IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             float value = Math.Clamp(percent, channel.MinPercent, channel.MaxPercent);
-            _touched.Add(channel);
+            bool first = _touched.Add(channel);
             channel.Set(value);
+            if (first)
+                WriteHandback(); // after Set: that's when the chip remembers what the BIOS had
             return value;
         }
     }
@@ -67,7 +76,8 @@ public abstract class FanSession : IDisposable
         lock (Sync)
         {
             channel.RestoreDefault();
-            _touched.Remove(channel);
+            if (_touched.Remove(channel))
+                WriteHandback();
         }
     }
 
@@ -85,7 +95,62 @@ public abstract class FanSession : IDisposable
             float current = Math.Clamp(channel.Percent ?? 100, channel.MinPercent, channel.MaxPercent);
             channel.Set(current);
             channel.RestoreDefault();
-            _touched.Remove(channel);
+            if (_touched.Remove(channel))
+                WriteHandback();
+        }
+    }
+
+    /// <summary>
+    /// Gives back the fans a process that ended without doing so had driven (from its
+    /// fans-in-use.json). Returns one line per fan, in plain words. Never throws.
+    /// </summary>
+    public virtual IReadOnlyList<string> HandBack(HandbackFile file)
+    {
+        var lines = new List<string>();
+        foreach (var id in file.Channels)
+        {
+            var channel = Channels.FirstOrDefault(c => c.Id == id);
+            if (channel is null)
+            {
+                lines.Add($"{id}: not found");
+                continue;
+            }
+            try
+            {
+                ForceRestore(channel);
+                lines.Add($"{channel.Name}: back to BIOS");
+            }
+            catch (Exception ex)
+            {
+                lines.Add($"{channel.Name}: failed ({ex.Message})");
+            }
+        }
+        return lines;
+    }
+
+    /// <summary>What the fan chips of these channels remember of the BIOS setup (real hardware only).</summary>
+    protected virtual IReadOnlyList<ChipState> CaptureChips(IReadOnlyCollection<FanChannel> channels) => [];
+
+    // called with Sync held, whenever the set of driven fans changes: that's rare (start, pause,
+    // resume, exit), so this is no disk write every second
+    private void WriteHandback()
+    {
+        if (HandbackPath is not { } path)
+            return;
+        try
+        {
+            if (_touched.Count == 0)
+            {
+                File.Delete(path);
+                return;
+            }
+            if (_touched.Count == 1)
+                _touchedSince = DateTimeOffset.Now;
+            HandbackFile.ForThisProcess([.. _touched.Select(c => c.Id)], CaptureChips(_touched), _touchedSince).Save(path);
+        }
+        catch (Exception)
+        {
+            // the file only helps after a crash; failing to write it must never stop the fan control
         }
     }
 
@@ -94,6 +159,7 @@ public abstract class FanSession : IDisposable
     {
         lock (Sync)
         {
+            var failed = new List<FanChannel>();
             foreach (var channel in _touched)
             {
                 try
@@ -103,9 +169,13 @@ public abstract class FanSession : IDisposable
                 catch
                 {
                     // keep going: the other fans must be restored even if one fails
+                    failed.Add(channel);
                 }
             }
+            bool any = _touched.Count > 0;
             _touched.Clear();
+            if (any && failed.Count == 0)
+                WriteHandback();
         }
     }
 

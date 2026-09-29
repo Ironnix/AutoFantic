@@ -1,3 +1,4 @@
+using System.Reflection;
 using LibreHardwareMonitor.Hardware;
 
 namespace AutoFantic.Core.Hardware;
@@ -10,6 +11,7 @@ public sealed class HardwareSession : FanSession
 {
     private readonly Computer _computer;
     private readonly List<FanChannel> _channels;
+    private readonly Dictionary<FanChannel, IHardware> _hardwareOf = [];
     private readonly Dictionary<ISensor, (string Id, string Hardware, string HardwareType, SensorKind Kind)> _names = [];
 
     public HardwareSession()
@@ -24,13 +26,59 @@ public sealed class HardwareSession : FanSession
         _computer.Open();
         Update();
 
-        _channels = AllSensors()
-            .Where(s => s.SensorType == SensorType.Control && s.Control is not null)
-            .Select((s, i) => ToChannel(i, s))
-            .ToList();
+        _channels = [];
+        foreach (var sensor in AllSensors().Where(s => s.SensorType == SensorType.Control && s.Control is not null))
+        {
+            var channel = ToChannel(_channels.Count, sensor);
+            _channels.Add(channel);
+            _hardwareOf[channel] = sensor.Hardware;
+        }
     }
 
     public override IReadOnlyList<FanChannel> Channels => _channels;
+
+    /// <summary>True if the mainboard has fan outputs the library can drive (a supported fan chip, the PawnIO driver loaded).</summary>
+    public bool HasMainboardFans => _hardwareOf.Values.Any(h => h.HardwareType == HardwareType.SuperIO);
+
+    protected override IReadOnlyList<ChipState> CaptureChips(IReadOnlyCollection<FanChannel> channels)
+    {
+        var states = new List<ChipState>();
+        foreach (var hardware in channels.Select(c => _hardwareOf.GetValueOrDefault(c)).OfType<IHardware>().Distinct())
+            if (ChipOf(hardware) is { } chip && ChipMemory.Capture(hardware.Identifier.ToString(), chip) is { } state)
+                states.Add(state);
+        return states;
+    }
+
+    /// <summary>
+    /// First the fan chips get their memory of the BIOS setup back (from the file), then every fan
+    /// is handed back: the library then restores exactly what the BIOS had set, instead of the stuck
+    /// speed it would find on its own. GPU fans need no memory: their driver takes over again.
+    /// </summary>
+    public override IReadOnlyList<string> HandBack(HandbackFile file)
+    {
+        var lines = new List<string>();
+        foreach (var state in file.Chips)
+        {
+            var hardware = _hardwareOf.Values.FirstOrDefault(h => h.Identifier.ToString() == state.HardwareId);
+            bool injected = false;
+            try
+            {
+                injected = hardware is not null && ChipOf(hardware) is { } chip && ChipMemory.Inject(chip, state);
+            }
+            catch (Exception)
+            {
+                // a library update may have changed the chip's fields: the plain hand-back below still runs
+            }
+            if (!injected)
+                lines.Add($"{state.HardwareId}: couldn't restore the BIOS setup (restart the PC if a fan stays at one speed)");
+        }
+        lines.AddRange(base.HandBack(file));
+        return lines;
+    }
+
+    // the library keeps the fan chip (Nct677X, IT87XX …) private inside its Super I/O hardware
+    private static object? ChipOf(IHardware hardware) =>
+        hardware.GetType().GetField("_superIO", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(hardware);
 
     protected override Snapshot ReadCore()
     {

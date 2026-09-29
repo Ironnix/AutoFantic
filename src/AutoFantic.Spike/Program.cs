@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Security.Principal;
 using AutoFantic.Core;
 using AutoFantic.Core.Hardware;
+using AutoFantic.Core.Logging;
 using AutoFantic.Core.Simulation;
 using AutoFantic.Spike;
 
@@ -124,6 +125,16 @@ try
 
     if (simulate)
         Console.WriteLine($"SIMULATION: no real fans are touched (speed ×{simSpeed:0.#}, {simLoad} load).\n");
+
+    // fans an earlier run left behind (a crash, a hard kill) go back to the BIOS first; from now on
+    // this run keeps its own fans-in-use file, so the same works for it
+    if (args[0] is "set" or "discover" or "sweep" or "calibrate" or "run" or "test" or "restore")
+    {
+        string data = DataFolder.Default(simulate);
+        if (Handback.RecoverIfNeeded(data, session, new ActivityLog(data), "the test console at its start") is { } recovered)
+            Console.WriteLine(recovered.Text + "\n");
+        session.HandbackPath = Handback.PathIn(data);
+    }
 
     return args[0] switch
     {

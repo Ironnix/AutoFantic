@@ -1,6 +1,7 @@
 using AutoFantic.Core.Analysis;
 using AutoFantic.Core.Calibration;
 using AutoFantic.Core.Hardware;
+using AutoFantic.Core.Logging;
 
 namespace AutoFantic.Core.Control;
 
@@ -17,6 +18,9 @@ public enum LoopState
 
     /// <summary>A temperature sensor stopped reporting: the BIOS drives the fans; retried after a minute.</summary>
     SensorProblem,
+
+    /// <summary>No calibration yet: the BIOS drives the fans; AutoFantic only reads the sensors.</summary>
+    NotSetUp,
 }
 
 /// <param name="Percent">Speed AutoFantic set; 0 = off; null = the BIOS is in control.</param>
@@ -37,16 +41,18 @@ public sealed record LoopStatus(
 /// the sensors, and drive the fans by the calibrated curves. Everything that must never go wrong
 /// lives here, not in the tray icon: a crossed limit runs every fan at 100 % until it is safely
 /// cool, a lost sensor hands the fans to the BIOS (it reads its own sensors), pausing hands them to
-/// the BIOS, and so does stopping.
+/// the BIOS, and so does stopping. Without a calibration it only reads the sensors (the BIOS keeps
+/// the fans) until the first one is done.
 /// </summary>
 public sealed class FanControlLoop : IDisposable
 {
     private static readonly TimeSpan SensorRetryAfter = TimeSpan.FromMinutes(1);
 
     private readonly FanSession _session;
-    private CalibrationResult _calibration;
+    private readonly ActivityLog _log;
+    private CalibrationResult? _calibration;
     private List<List<FanChannel>> _channels;
-    private CurveController _controller;
+    private CurveController? _controller;
     private readonly SafetyLimits _limits = new();
     private readonly KeySensors _keys;
     private readonly Lock _lock = new();
@@ -54,23 +60,31 @@ public sealed class FanControlLoop : IDisposable
     private SensorPlausibility _plausibility;
     private SafetyRecovery? _recovery;
     private DateTimeOffset _sensorRetryAt;
+    private bool _retryingSensors;
     private bool _paused;
     private Thread? _thread;
     private CancellationTokenSource? _stop;
     private int _disposed;
 
+    /// <param name="calibration">The curves; null = not calibrated yet (the BIOS keeps the fans until <see cref="UseCalibration"/>).</param>
     /// <param name="minSpinning">Per calibrated group: the lowest speed at which its fans turn.</param>
-    public FanControlLoop(FanSession session, CalibrationResult calibration, IReadOnlyList<double> minSpinning)
+    /// <param name="log">Where safety stops, sensor problems and fans switching off and on are written.</param>
+    public FanControlLoop(FanSession session, CalibrationResult? calibration, IReadOnlyList<double> minSpinning, ActivityLog? log = null)
     {
         _session = session;
+        _log = log ?? ActivityLog.InMemoryOnly();
         _calibration = calibration;
-        _channels = ChannelsFor(session, calibration);
+        _channels = calibration is null ? [] : ChannelsFor(session, calibration);
         _keys = KeySensors.Detect(session.Read());
         _plausibility = new SensorPlausibility(_keys);
-        _controller = new CurveController(calibration, minSpinning);
+        _controller = calibration is null ? null : new CurveController(calibration, minSpinning);
+        State = calibration is null ? LoopState.NotSetUp : LoopState.Running;
     }
 
-    public LoopState State { get; private set; } = LoopState.Running;
+    public LoopState State { get; private set; }
+
+    /// <summary>The key sensors found at the start (CPU and GPU temperature and power …).</summary>
+    public KeySensors Keys => _keys;
 
     /// <summary>Per calibrated group: the lowest speed its fans turn at, from what was measured (fans.json).</summary>
     public static IReadOnlyList<double> MinSpinning(CalibrationResult calibration, FanInventory inventory)
@@ -87,8 +101,8 @@ public sealed class FanControlLoop : IDisposable
     /// <summary>Something the user should know about (a safety stop, a sensor problem). Raised on the loop's thread.</summary>
     public event Action<string>? Alert;
 
-    /// <summary>The curves in use now.</summary>
-    public CalibrationResult Calibration => _calibration;
+    /// <summary>The curves in use now; null while not calibrated.</summary>
+    public CalibrationResult? Calibration => _calibration;
 
     /// <summary>
     /// Switches to other curves while running (another profile, a curve edited by hand). Takes
@@ -105,6 +119,8 @@ public sealed class FanControlLoop : IDisposable
             _calibration = calibration;
             _channels = channels;
             _controller = new CurveController(calibration, minSpinning);
+            if (State == LoopState.NotSetUp)
+                State = LoopState.Running;
         }
     }
 
@@ -131,8 +147,8 @@ public sealed class FanControlLoop : IDisposable
                 }
                 else
                 {
-                    _controller.Restart();
-                    State = LoopState.Running;
+                    _controller?.Restart();
+                    State = _calibration is null ? LoopState.NotSetUp : LoopState.Running;
                 }
             }
         }
@@ -156,6 +172,7 @@ public sealed class FanControlLoop : IDisposable
                 {
                     // never leave the fans at a fixed speed because of an error: back to the BIOS
                     _session.RestoreAll();
+                    _log.Add(LogKind.Warning, $"Error, fans handed back to the BIOS for 10 s: {ex.Message}");
                     Alert?.Invoke($"Error, fans handed back to the BIOS: {ex.Message}");
                     token.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
                 }
@@ -176,7 +193,11 @@ public sealed class FanControlLoop : IDisposable
             double?[] speeds = new double?[_channels.Count]; // null = BIOS
             IReadOnlyList<FanStatus>? status = null;
 
-            if (_paused)
+            if (_calibration is null || _controller is null)
+            {
+                State = LoopState.NotSetUp;
+            }
+            else if (_paused)
             {
                 State = LoopState.Paused;
             }
@@ -191,6 +212,7 @@ public sealed class FanControlLoop : IDisposable
                     _plausibility = new SensorPlausibility(_keys);
                     _controller.Restart();
                     State = LoopState.Running;
+                    _retryingSensors = true;
                 }
 
                 string? violation = _limits.Check(s, _keys);
@@ -201,6 +223,9 @@ public sealed class FanControlLoop : IDisposable
                     _session.RestoreAll();
                     State = LoopState.SensorProblem;
                     _sensorRetryAt = s.Time + SensorRetryAfter;
+                    if (!_retryingSensors)
+                        _log.Add(LogKind.Sensor, $"{sensorError}: fans handed back to the BIOS; trying again every minute.");
+                    _retryingSensors = false;
                     Alert?.Invoke($"{sensorError}: fans handed back to the BIOS, trying again in a minute.");
                 }
                 else if (violation is not null || State == LoopState.CoolingDown)
@@ -209,6 +234,7 @@ public sealed class FanControlLoop : IDisposable
                     {
                         State = LoopState.CoolingDown;
                         _recovery = new SafetyRecovery(_limits, _keys);
+                        _log.Add(LogKind.Safety, $"{violation}: all fans at 100 % until it has cooled down.");
                         Alert?.Invoke($"{violation}: all fans at 100 % until it has cooled down.");
                     }
                     Apply(Enumerable.Repeat(100.0, _channels.Count).ToArray(), speeds);
@@ -216,6 +242,7 @@ public sealed class FanControlLoop : IDisposable
                     {
                         State = LoopState.Running;
                         _controller.Reset();
+                        _log.Add(LogKind.Safety, $"Cooled down again (CPU {cpu:0} °C, GPU {gpu:0} °C): the fans follow their curves again.");
                     }
                 }
                 else
@@ -225,12 +252,19 @@ public sealed class FanControlLoop : IDisposable
                         temps[Component.Cpu] = c;
                     if (gpu is { } g)
                         temps[Component.GpuCore] = g;
+                    if (_retryingSensors)
+                    {
+                        _retryingSensors = false;
+                        _log.Add(LogKind.Sensor, "The sensors work again: AutoFantic controls the fans again.");
+                    }
                     Apply(_controller.Step(s.Time, temps, cpuW, gpuW), speeds);
                     status = _controller.Status;
+                    foreach (var change in _controller.Switches)
+                        _log.Add(LogKind.Fans, $"{_calibration.Groups[change.Group].Name} {(change.Off ? "off" : "on again")}: {change.Why}");
                 }
             }
 
-            var fans = _calibration.Groups.Select((g, i) => new FanReading(g.Name, speeds[i], status?[i])).ToList();
+            var fans = _calibration is null ? [] : _calibration.Groups.Select((g, i) => new FanReading(g.Name, speeds[i], status?[i])).ToList();
             Last = new LoopStatus(s.Time, State, cpu, gpu, cpuW, gpuW, fans);
             return Last;
         }

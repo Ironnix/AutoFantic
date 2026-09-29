@@ -1,5 +1,6 @@
 using AutoFantic.Core.Calibration;
 using AutoFantic.Core.Control;
+using AutoFantic.Core.Logging;
 using AutoFantic.Core.Simulation;
 
 namespace AutoFantic.Core.Tests;
@@ -103,6 +104,62 @@ public class FanControlLoopTests
         }
         while (status.State == LoopState.CoolingDown && ++seconds < 2000);
         Assert.Equal(LoopState.Running, status.State);
+    }
+
+    [Fact]
+    public void Without_a_calibration_the_bios_keeps_the_fans_until_the_first_one_is_done()
+    {
+        var (pc, clock) = Pc(SimLoad.Game);
+        using var loop = new FanControlLoop(pc, calibration: null, []);
+
+        var status = Run(loop, clock, 3);
+        Assert.Equal(LoopState.NotSetUp, status.State);
+        Assert.NotNull(status.CpuTemp);                // the window still shows the temperatures
+        Assert.Empty(status.Fans);
+        Assert.All(pc.Channels, c => Assert.False(c.IsSoftwareControlled));
+
+        loop.Paused = true;                            // a calibration pauses it …
+        loop.Paused = false;                           // … and resumes it, still not set up
+        Assert.Equal(LoopState.NotSetUp, Run(loop, clock, 1).State);
+
+        loop.UseCalibration(Calibration(55, 45, 70), [30, 30, 40]);
+        status = Run(loop, clock, 2);
+        Assert.Equal(LoopState.Running, status.State);
+        Assert.Equal(55, pc.Channels[0].Percent);
+    }
+
+    [Fact]
+    public void Safety_stops_and_fans_switching_off_are_written_to_the_log()
+    {
+        var log = ActivityLog.InMemoryOnly();
+        var (pc, clock) = Pc(new SimLoad(120, 320, 40, 99, "Game"));
+        using var loop = new FanControlLoop(pc, Calibration(60, 60, 30), [30, 30, 30], log);
+
+        int seconds = 0;
+        while (loop.Tick().State != LoopState.CoolingDown && ++seconds < 900)
+            clock.Advance(TimeSpan.FromSeconds(1));
+        while (loop.Tick().State == LoopState.CoolingDown && ++seconds < 2000)
+            clock.Advance(TimeSpan.FromSeconds(1));
+
+        var safety = log.Entries.Where(e => e.Kind == LogKind.Safety).ToList();
+        Assert.Contains("all fans at 100 %", safety[0].Text);
+        Assert.Contains("Cooled down again", safety[1].Text);
+
+        // at idle, a fan that may stop switches off, and that is logged too
+        var idle = ActivityLog.InMemoryOnly();
+        var (quiet, quietClock) = Pc(SimLoad.Idle);
+        var calibration = Calibration(40, 40, 40);
+        calibration = calibration with
+        {
+            Groups = [calibration.Groups[0], calibration.Groups[1], calibration.Groups[2] with { OffAt = ["idle"] }],
+            StopCpuWatts = 60,
+            StopGpuWatts = 60,
+        };
+        using var idleLoop = new FanControlLoop(quiet, calibration, [30, 30, 30], idle);
+        Run(idleLoop, quietClock, 120);
+
+        var off = Assert.Single(idle.Entries, e => e.Kind == LogKind.Fans);
+        Assert.StartsWith("GPU Fan (#3) off: idle and cool", off.Text);
     }
 
     [Fact]

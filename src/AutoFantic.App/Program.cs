@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Security.Principal;
 using System.Windows;
 using System.Windows.Media;
@@ -15,14 +16,30 @@ namespace AutoFantic.App;
 /// the fans on the calibrated curves. Needs admin rights for the hardware driver; asks for them
 /// itself, or has them when started by "Start with Windows" (Task Scheduler, highest privileges).
 ///
+/// Before the first calibration the BIOS keeps the fans and the window opens on its set-up page.
+/// A watchdog process (<see cref="Watchdog"/>) hands the fans back if AutoFantic is killed.
+///
 /// Options for checking a build without touching the screen (with --simulate):
-///   --selftest [--seconds 5]        start everything without an icon, run 5 s, exit 0 if it controlled the fans
-///   --screenshot file.png [--page overview|curves|calibration|settings] [--height 2000]   render the window off-screen to a PNG
+///   --selftest [--seconds 5]        start everything without an icon, run 5 s, exit 0 if it controlled the fans (or, not set up, only watched)
+///   --selftest-calibration          a whole calibration with the built-in load, as the window starts it (the first one finds the fans too)
+///   --screenshot file.png [--page overview|curves|calibration|log|settings] [--height 2000]   render the window off-screen to a PNG
 /// </summary>
 internal static class Program
 {
     [STAThread]
     private static int Main(string[] args)
+    {
+        // the watchdog's processes: nothing of the window is loaded for them
+        if (args.Contains(Watchdog.LaunchArgument))
+            return Watchdog.RunLauncher(args);
+        if (args.Contains(Watchdog.Argument))
+            return Watchdog.Run(args);
+        return RunApp(args);
+    }
+
+    // kept apart from Main, so the watchdog never loads WPF
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int RunApp(string[] args)
     {
         bool simulate = args.Contains("--simulate");
         bool selfTest = args.Contains("--selftest") || args.Contains("--selftest-calibration");
@@ -94,6 +111,8 @@ internal static class Program
             if (screenshot is not null)
                 return Screenshot(app, screenshot, Option(args, "--page") ?? "overview", double.TryParse(Option(args, "--height"), out double h) ? h : null);
 
+            Watchdog.Launch(simulate);
+
             using var tray = new TrayIcon(app, quiet: selfTest);
             if (args.Contains("--selftest-calibration"))
             {
@@ -106,9 +125,12 @@ internal static class Program
             }
             else if (selfTest)
             {
+                var expected = app.IsSetUp ? Core.Control.LoopState.Running : Core.Control.LoopState.NotSetUp;
                 After(TimeSpan.FromSeconds(double.TryParse(Option(args, "--seconds"), out double s) ? s : 5),
-                    () => wpf.Shutdown(app.Loop.Last is { State: Core.Control.LoopState.Running } ? 0 : 3));
+                    () => wpf.Shutdown(app.Loop.Last?.State == expected ? 0 : 3));
             }
+            else if (!app.IsSetUp)
+                wpf.Dispatcher.BeginInvoke(() => tray.OpenWindow("calibration")); // nothing to do in the background yet: show the set-up
             else if (args.Contains("--open"))
                 wpf.Dispatcher.BeginInvoke(() => tray.OpenWindow());
 
@@ -142,7 +164,11 @@ internal static class Program
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
-            dc.DrawRectangle(window.Background ?? System.Windows.Media.Brushes.White, null, size);
+            // off-screen the window has no backdrop: the theme's own background, so dark mode stays readable
+            var background = window.TryFindResource("ApplicationBackgroundBrush") as System.Windows.Media.Brush
+                ?? window.TryFindResource("WindowBackground") as System.Windows.Media.Brush
+                ?? window.Background ?? System.Windows.Media.Brushes.White;
+            dc.DrawRectangle(background, null, size);
             dc.DrawRectangle(new VisualBrush(root), null, size);
         }
         var bitmap = new RenderTargetBitmap((int)(size.Width * dpi.DpiScaleX), (int)(size.Height * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);

@@ -38,6 +38,7 @@ public sealed class CurveController
     private readonly GroupState[] _state;
     private readonly FanStatus[] _status;
     private readonly Dictionary<Component, double> _smoothed = [];
+    private readonly List<FanSwitch> _switches = [];
     private DateTimeOffset? _last;
 
     private sealed class GroupState
@@ -60,6 +61,9 @@ public sealed class CurveController
 
     /// <summary>Per group, after the last step: the temperature it followed, what the curve says there, and why it runs at the speed it does.</summary>
     public IReadOnlyList<FanStatus> Status => _status;
+
+    /// <summary>The groups that switched off or on again in the last step, and why (for the log).</summary>
+    public IReadOnlyList<FanSwitch> Switches => _switches;
 
     /// <summary>
     /// Where a group that may stop switches off: at or below the last of its curve's leading 0 %
@@ -110,13 +114,14 @@ public sealed class CurveController
 
         double warmest = Math.Max(_smoothed.GetValueOrDefault(Component.Cpu), _smoothed.GetValueOrDefault(Component.GpuCore));
         bool lowLoad = cpuPower <= _calibration.StopCpuWatts && gpuPower <= _calibration.StopGpuWatts;
+        _switches.Clear();
 
         var output = new double[_state.Length];
         for (int g = 0; g < _state.Length; g++)
         {
             var group = _calibration.Groups[g];
             var state = _state[g];
-            double temperature = _smoothed.GetValueOrDefault(group.Follows);
+            double temperature = group.Follows == Component.Warmest ? warmest : _smoothed.GetValueOrDefault(group.Follows);
             double offAt = OffTemperature(group);
             bool mayStop = group.OffAt.Count > 0 && lowLoad;
 
@@ -130,12 +135,17 @@ public sealed class CurveController
                     state.Since = now;
                     state.KickUntil = now + KickFor;
                     state.Percent = _minSpinning[g];
+                    _switches.Add(new FanSwitch(g, false,
+                        temperature > offAt + Hysteresis ? $"{CalibrationInsights.Name(Warmer(group.Follows))} {temperature:0} °C"
+                        : warm ? $"{CalibrationInsights.Name(Warmer(Component.Warmest))} {warmest:0} °C"
+                        : $"load came (CPU {cpuPower:0} W, GPU {gpuPower:0} W)"));
                 }
             }
             else if (mayStop && temperature <= offAt && warmest <= OthersBelow && now - state.Since >= MinOn)
             {
                 state.Off = true;
                 state.Since = now;
+                _switches.Add(new FanSwitch(g, true, $"idle and cool ({CalibrationInsights.Name(group.Follows)} {temperature:0} °C, CPU {cpuPower:0} W, GPU {gpuPower:0} W)"));
             }
 
             double curve = Interpolate(group.Curve, temperature);
@@ -164,21 +174,18 @@ public sealed class CurveController
     }
 
     /// <summary>Linear between the curve's points; flat before the first and after the last.</summary>
-    public static double Interpolate(IReadOnlyList<CurvePoint> curve, double temperature)
-    {
-        if (curve.Count == 0)
-            return 100;
-        if (temperature <= curve[0].Temperature)
-            return curve[0].Percent;
-        for (int i = 1; i < curve.Count; i++)
-        {
-            var (a, b) = (curve[i - 1], curve[i]);
-            if (temperature <= b.Temperature)
-                return a.Percent + (b.Percent - a.Percent) * (temperature - a.Temperature) / Math.Max(1e-9, b.Temperature - a.Temperature);
-        }
-        return curve[^1].Percent;
-    }
+    public static double Interpolate(IReadOnlyList<CurvePoint> curve, double temperature) => CalibrationResult.Interpolate(curve, temperature);
+
+    // "the warmer of the two" in a log line: whichever it is right now
+    private Component Warmer(Component follows) =>
+        follows != Component.Warmest ? follows
+        : _smoothed.GetValueOrDefault(Component.Cpu) >= _smoothed.GetValueOrDefault(Component.GpuCore) ? Component.Cpu : Component.GpuCore;
 }
+
+/// <param name="Group">Index of the calibrated group.</param>
+/// <param name="Off">True: switched off; false: on again.</param>
+/// <param name="Why">In plain words, e.g. "idle and cool (CPU 44 °C …)" or "GPU 63 °C".</param>
+public sealed record FanSwitch(int Group, bool Off, string Why);
 
 /// <summary>Why a fan runs at the speed it does right now.</summary>
 public enum FanNote
