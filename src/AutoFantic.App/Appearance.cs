@@ -15,8 +15,9 @@ public enum Theme
     Dark,
 }
 
-/// <summary>Whether the window is light, dark or like Windows (the default).</summary>
-internal sealed record AppearanceSettings(Theme Theme = Theme.LikeWindows)
+/// <summary>Whether the window is light, dark or like Windows (the default), and its language.</summary>
+/// <param name="Language">"en", "de", or "" for Windows' own language; takes effect at the next start.</param>
+internal sealed record AppearanceSettings(Theme Theme = Theme.LikeWindows, string Language = "")
 {
     public const string FileName = "appearance.json";
 

@@ -8,6 +8,7 @@ using AutoFantic.Core.Monitoring;
 using AutoFantic.Core.Reports;
 using AutoFantic.Core.Simulation;
 using AutoFantic.Core.Updates;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.App;
 
@@ -128,7 +129,7 @@ internal sealed class AppController : IDisposable
                 return;
             _userPaused = value;
             UpdatePause();
-            Log.Add(LogKind.Info, value ? "Paused: the BIOS controls the fans." : "Resumed: AutoFantic controls the fans again.");
+            Log.Add(LogKind.Info, value ? T("Paused: the BIOS controls the fans.") : T("Resumed: AutoFantic controls the fans again."));
         }
     }
 
@@ -142,7 +143,7 @@ internal sealed class AppController : IDisposable
                 return;
             _sleeping = value;
             UpdatePause();
-            Log.Add(LogKind.Info, value ? "Going to sleep: the fans are handed to the BIOS." : "Woke up: AutoFantic takes the fans back.");
+            Log.Add(LogKind.Info, value ? T("Going to sleep: the fans are handed to the BIOS.") : T("Woke up: AutoFantic takes the fans back."));
         }
     }
 
@@ -165,13 +166,13 @@ internal sealed class AppController : IDisposable
         }
         catch (Exception ex)
         {
-            problem = $"AutoFantic can't open the hardware: {ex.Message}";
+            problem = T($"AutoFantic can't open the hardware: {ex.Message}");
             log.Add(LogKind.Warning, problem);
             return null;
         }
 
         // the watchdog normally did this already; if it didn't run, a crashed run's fans go back now
-        Handback.RecoverIfNeeded(runs, session, log, "AutoFantic at its start");
+        Handback.RecoverIfNeeded(runs, session, log, T("AutoFantic at its start"));
         session.HandbackPath = Handback.PathIn(runs);
 
         var inventory = FanInventory.Load(Path.Combine(runs, CalibrationFiles.Inventory));
@@ -188,7 +189,7 @@ internal sealed class AppController : IDisposable
         catch (InvalidOperationException ex)
         {
             // the fans changed since the calibration (another mainboard, a GPU swapped): set up again
-            log.Add(LogKind.Warning, $"{ex.Message} Until then the BIOS controls the fans.");
+            log.Add(LogKind.Warning, T($"{ex.Message} Until then the BIOS controls the fans."));
             calibration = null;
             inventory = null;
             loop = new FanControlLoop(session, null, [], log);
@@ -199,8 +200,8 @@ internal sealed class AppController : IDisposable
         {
             UnexpectedEnd = LastRunEndedBadly(log),
         };
-        log.Add(LogKind.Info, $"AutoFantic {AppVersion.Text} started{(simulate ? " (simulated PC)" : "")}: "
-            + (app.IsSetUp ? $"{app.Preset.Name}, {app.Effective!.Groups.Count} fan groups." : "not set up yet, the BIOS controls the fans."));
+        log.Add(LogKind.Info, T($"AutoFantic {AppVersion.Text} started{(simulate ? T(" (simulated PC)") : "")}: "
+            + $"{(app.IsSetUp ? T($"{T(app.Preset.Name)}, {app.Effective!.Groups.Count} fan groups.") : T("not set up yet, the BIOS controls the fans."))}"));
         foreach (var check in app.Checks.Where(c => c.Result >= CheckResult.Warning))
             log.Add(LogKind.Warning, $"{check.Title}: {check.Detail}");
         app.UpgradeIfOld();
@@ -222,7 +223,12 @@ internal sealed class AppController : IDisposable
             app.UpdateQuiet();
         };
         // the days since the calibration: now (in the background) and every hour after
-        app._healthTimer = new System.Threading.Timer(_ => app.UpdateHealth(), null, TimeSpan.FromSeconds(20), TimeSpan.FromHours(1));
+        app.FanWearSettings = FanWearSettings.Load(Path.Combine(runs, FanWearSettings.FileName));
+        app._healthTimer = new System.Threading.Timer(_ =>
+        {
+            app.UpdateHealth();
+            app.UpdateFanWear();
+        }, null, TimeSpan.FromSeconds(20), TimeSpan.FromHours(1));
         return app;
     }
 
@@ -231,8 +237,8 @@ internal sealed class AppController : IDisposable
     {
         string Avg(Series series) => session.Stats.TryGetValue(series.Key, out var s) ? $"{s.Avg:0} {series.Unit}" : "–";
         string Max(Series series) => session.Stats.TryGetValue(series.Key, out var s) ? $"{s.Max:0} {series.Unit}" : "–";
-        return $"{Sessions.Pretty(session.Program)}: {session.Length.TotalMinutes:0} min, GPU {Avg(HistoryRecorder.GpuTemp)} on average, "
-            + $"hotspot up to {Max(HistoryRecorder.GpuHotspot)}, CPU {Avg(HistoryRecorder.CpuTemp)} on average ({session.Preset}).";
+        return T($"{Sessions.Pretty(session.Program)}: {session.Length.TotalMinutes:0} min, GPU {Avg(HistoryRecorder.GpuTemp)} on average, "
+            + $"hotspot up to {Max(HistoryRecorder.GpuHotspot)}, CPU {Avg(HistoryRecorder.CpuTemp)} on average ({T(session.Preset)}).");
     }
 
     // ── extra quiet ────────────────────────────────────────────────────────────────────
@@ -254,9 +260,9 @@ internal sealed class AppController : IDisposable
         Loop.Quiet = reason;
         Log.Add(LogKind.Fans, reason switch
         {
-            "away" => $"Extra quiet: nobody at the PC for {Quiet.AwayMinutes} min. Every fan at its slowest, the ones that can stop off, while it stays cool.",
-            "night" => $"Extra quiet for the night (until {Quiet.NightTo}). Every fan at its slowest, the ones that can stop off, while it stays cool.",
-            _ => "Normal again: the fans follow their curves.",
+            "away" => T($"Extra quiet: nobody at the PC for {Quiet.AwayMinutes} min. Every fan at its slowest, the ones that can stop off, while it stays cool."),
+            "night" => T($"Extra quiet for the night (until {Quiet.NightTo}). Every fan at its slowest, the ones that can stop off, while it stays cool."),
+            _ => T("Normal again: the fans follow their curves."),
         });
     }
 
@@ -314,17 +320,17 @@ internal sealed class AppController : IDisposable
         {
             UpdateAvailable = UpdateCheck.Current is { } current
                 ? await UpdateCheck.NewerAsync(current, url)
-                : throw new InvalidOperationException("this build has no version number");
+                : throw new InvalidOperationException(T("this build has no version number"));
             UpdateProblem = null;
             if (UpdateAvailable is { } found && found.Version != _loggedUpdate)
             {
                 _loggedUpdate = found.Version;
-                Log.Add(LogKind.Info, $"{found.Name} is available (you have {AppVersion.Text}): Settings → Updates.");
+                Log.Add(LogKind.Info, T($"{found.Name} is available (you have {AppVersion.Text}): Settings → Updates."));
             }
         }
         catch (Exception ex)
         {
-            UpdateProblem = ex is TaskCanceledException ? "GitHub didn't answer in time." : $"The check didn't work ({ex.Message}).";
+            UpdateProblem = ex is TaskCanceledException ? T("GitHub didn't answer in time.") : T($"The check didn't work ({ex.Message}).");
         }
         UpdateChecked = DateTimeOffset.Now;
         UpdateStateChanged?.Invoke();
@@ -338,34 +344,44 @@ internal sealed class AppController : IDisposable
     public async Task InstallUpdateAsync(Release release, IProgress<double>? progress)
     {
         if (Calibrating)
-            throw new InvalidOperationException("A calibration is running: finish or stop it first.");
+            throw new InvalidOperationException(T("A calibration is running: finish or stop it first."));
         if (!UpdateInstaller.CanInstallInto(AppContext.BaseDirectory))
-            throw new InvalidOperationException("This AutoFantic runs from the compiler's output, not a published build: build it again instead.");
+            throw new InvalidOperationException(T("This AutoFantic runs from the compiler's output, not a published build: build it again instead."));
         try
         {
-            Log.Add(LogKind.Info, $"Updating to {release.Version}: downloading {release.ZipSize / 1e6:0} MB from GitHub …");
+            Log.Add(LogKind.Info, T($"Updating to {release.Version}: downloading {release.ZipSize / 1e6:0} MB from GitHub …"));
             string files = await UpdateInstaller.DownloadAsync(release, UpdateWork, progress);
+            // once AutoFantic is signed, only the same publisher's exe may replace it
+            Signature.CheckSamePublisher(Path.Combine(AppContext.BaseDirectory, UpdateInstaller.ExeName), Path.Combine(files, UpdateInstaller.ExeName));
             UpdateInstaller.Install(files, AppContext.BaseDirectory);
         }
         catch (Exception ex)
         {
-            Log.Add(LogKind.Warning, $"The update to {release.Version} didn't work: {ex.Message} AutoFantic {AppVersion.Text} keeps running.");
+            Log.Add(LogKind.Warning, T($"The update to {release.Version} didn't work: {ex.Message} AutoFantic {AppVersion.Text} keeps running."));
             throw;
         }
-        Log.Add(LogKind.Info, $"{release.Name} is installed. AutoFantic restarts into it; the BIOS has the fans for those few seconds.");
+        Log.Add(LogKind.Info, T($"{release.Name} is installed. AutoFantic restarts into it; the BIOS has the fans for those few seconds."));
     }
 
     /// <summary>
     /// Starts the AutoFantic.exe that is in place now (the new version). It waits until this one has
     /// ended and handed the fans back, so the caller exits right after. Admin rights carry over.
     /// </summary>
-    public void StartNewVersion(params string[] args)
+    public void StartNewVersion(params string[] args) => Start(Path.Combine(AppContext.BaseDirectory, UpdateInstaller.ExeName), AppVersion.Text, args);
+
+    /// <summary>Starts this AutoFantic again (e.g. in another language); like <see cref="StartNewVersion"/>, the caller exits right after.</summary>
+    public void StartAgain(params string[] args) => Start(Environment.ProcessPath!, null, args);
+
+    private void Start(string exe, string? updatedFrom, string[] args)
     {
-        var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, UpdateInstaller.ExeName)) { UseShellExecute = false };
+        var start = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false };
         start.ArgumentList.Add(WaitForArgument);
         start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        start.ArgumentList.Add(UpdatedFromArgument);
-        start.ArgumentList.Add(AppVersion.Text);
+        if (updatedFrom is not null)
+        {
+            start.ArgumentList.Add(UpdatedFromArgument);
+            start.ArgumentList.Add(updatedFrom);
+        }
         if (Session is SimulatedPc)
             start.ArgumentList.Add("--simulate");
         foreach (string arg in args)
@@ -413,7 +429,88 @@ internal sealed class AppController : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Add(LogKind.Warning, $"Cooling health: {ex.Message}");
+            Log.Add(LogKind.Warning, T($"Cooling health: {ex.Message}"));
+        }
+    }
+
+    // ── worn fans ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>Per fan: since when its first week counts, and the last warning given.</summary>
+    public FanWearSettings FanWearSettings { get; private set; } = new();
+
+    /// <summary>Every fan (as found), how it turns against its first week, and its days for the chart.</summary>
+    public IReadOnlyList<(FanGroup Group, FanWearResult Result, bool HasFirstWeek, IReadOnlyList<(DateOnly Day, double Change, int Minutes)> Daily)> FanWearNow()
+    {
+        var days = Monitor.Store.FanDays();
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        return [.. (Inventory?.Groups() ?? []).Select(group =>
+        {
+            string key = MeasurementStore.Key(group);
+            var mine = days.Where(d => d.Fan == key).ToList();
+            var since = FanWearSettings.SinceFor(key);
+            return (group, FanWear.Now(mine, since, today), FanWear.FirstWeek(mine, since).Start is not null, FanWear.Daily(mine, since));
+        })];
+    }
+
+    /// <summary>After cleaning or replacing a fan: its first week starts again today.</summary>
+    public void StartFanAgain(FanGroup group)
+    {
+        string key = MeasurementStore.Key(group);
+        FanWearSettings = FanWearSettings.StartAgain(key, DateOnly.FromDateTime(DateTime.Now));
+        FanWearSettings.Save(Path.Combine(RunsPath, FanWearSettings.FileName));
+        Log.Add(LogKind.Fans, T($"{group.Name}: a new first week starts today for the worn fan detection (cleaned or replaced)."));
+        HealthUpdated?.Invoke();
+    }
+
+    /// <summary>
+    /// Works out every fan's finished days (at most the last 30, as long as minute values are kept)
+    /// that aren't stored yet, and says once per level when a fan turns clearly slower. Runs on a timer thread.
+    /// </summary>
+    public void UpdateFanWear()
+    {
+        try
+        {
+            if (Inventory is null)
+                return;
+            var store = Monitor.Store;
+            var done = store.FanDays().Select(d => (d.Day, d.Fan)).ToHashSet();
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            bool any = false;
+            foreach (var group in Inventory.Groups())
+            {
+                string key = MeasurementStore.Key(group);
+                var percent = HistoryRecorder.FanSeries(group, SeriesKind.FanPercent);
+                var rpm = HistoryRecorder.FanSeries(group, SeriesKind.FanRpm);
+                for (var day = today.AddDays(-29); day < today; day = day.AddDays(1))
+                {
+                    if (done.Contains((day, key)))
+                        continue;
+                    var from = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue));
+                    store.SaveFanDay(new FanDay(day, key, FanWear.Steps(store, percent, rpm, from, from.AddDays(1)))); // stored even if empty: not worked out again
+                    any = true;
+                }
+            }
+
+            foreach (var (group, result, _, _) in FanWearNow())
+            {
+                string key = MeasurementStore.Key(group);
+                string? level = result.Change <= FanWear.Worn ? "worn" : result.Change <= FanWear.Check ? "check" : null;
+                string? warned = FanWearSettings.Warned?.GetValueOrDefault(key);
+                if (level is null || level == warned || (level == "check" && warned == "worn"))
+                    continue;
+                FanWearSettings = FanWearSettings.WithWarning(key, level);
+                FanWearSettings.Save(Path.Combine(RunsPath, FanWearSettings.FileName));
+                string message = T($"{group.Name} turns {-result.Change!.Value:0} % slower than in its first week at the same setting: "
+                    + $"{(level == "worn" ? T("probably worn or blocked. Clean it, or replace it soon.") : T("clean it and listen for grinding or rattling."))}");
+                Log.Add(LogKind.Warning, message);
+                Alert?.Invoke(message);
+            }
+            if (any)
+                HealthUpdated?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Log.Add(LogKind.Warning, T($"Worn fan detection: {ex.Message}"));
         }
     }
 
@@ -445,7 +542,7 @@ internal sealed class AppController : IDisposable
         }
         catch (Exception ex)
         {
-            log.Add(LogKind.Warning, $"The history ({HistoryStore.FileName}) couldn't be opened, so it isn't kept this time: {ex.Message}");
+            log.Add(LogKind.Warning, T($"The history ({HistoryStore.FileName}) couldn't be opened, so it isn't kept this time: {ex.Message}"));
             store = new HistoryStore(null);
         }
         return new HistoryRecorder(store, loop.Keys) { Warnings = WarningSettings.Load(Path.Combine(runs, WarningSettings.FileName)) };
@@ -468,12 +565,14 @@ internal sealed class AppController : IDisposable
     public string? UnexpectedEnd { get; private init; }
 
     // a watchdog entry after the previous run's start: that run was killed or crashed
+    // (the start line in English or in German, Lang\de-app.json: the run before may have used the other language)
     private static string? LastRunEndedBadly(ActivityLog log)
     {
         var entries = log.Entries;
         int previousStart = -1;
         for (int i = entries.Count - 1; i >= 0 && previousStart < 0; i--)
-            if (entries[i].Kind == LogKind.Info && entries[i].Text.StartsWith("AutoFantic ", StringComparison.Ordinal) && entries[i].Text.Contains(" started", StringComparison.Ordinal))
+            if (entries[i].Kind == LogKind.Info && entries[i].Text.StartsWith("AutoFantic ", StringComparison.Ordinal)
+                && (entries[i].Text.Contains(" started", StringComparison.Ordinal) || entries[i].Text.Contains(" gestartet", StringComparison.Ordinal)))
                 previousStart = i;
         return entries.Skip(previousStart + 1).LastOrDefault(e => e.Kind == LogKind.Watchdog)?.Text;
     }
@@ -487,7 +586,7 @@ internal sealed class AppController : IDisposable
         if (Recommended is not { } old || old.Version >= CalibrationResult.CurrentVersion || !CanSwitchPreset)
             return;
         if (Recalculate(Preset))
-            Log.Add(LogKind.Info, "The curves were worked out again with this version's rules: smoother curves, case fans follow the warmer of CPU and GPU.");
+            Log.Add(LogKind.Info, T("The curves were worked out again with this version's rules: smoother curves, case fans follow the warmer of CPU and GPU."));
     }
 
     private void Reload()
@@ -518,7 +617,7 @@ internal sealed class AppController : IDisposable
     {
         bool done = Recalculate(preset);
         if (done)
-            Log.Add(LogKind.Info, $"Preset {preset.Name}: {preset.Description}");
+            Log.Add(LogKind.Info, T($"Preset {T(preset.Name)}: {T(preset.Description)}"));
         return done;
     }
 
@@ -545,8 +644,8 @@ internal sealed class AppController : IDisposable
         Overrides = Overrides.WithBios(r.Groups[group], bios);
         Overrides.Save(Path.Combine(RunsPath, CalibrationFiles.Curves));
         Log.Add(LogKind.Fans, bios
-            ? $"{r.Groups[group].Name}: given to the BIOS. AutoFantic leaves these fans alone; the other fans stay with AutoFantic."
-            : $"{r.Groups[group].Name}: AutoFantic controls these fans again.");
+            ? T($"{r.Groups[group].Name}: given to the BIOS. AutoFantic leaves these fans alone; the other fans stay with AutoFantic.")
+            : T($"{r.Groups[group].Name}: AutoFantic controls these fans again."));
         Apply();
     }
 
@@ -609,7 +708,7 @@ internal sealed class AppController : IDisposable
         _calibrating = new CancellationTokenSource();
         var cancel = _calibrating.Token;
         UpdatePause();
-        Log.Add(LogKind.Calibration, $"Calibration started with {(builtInLoad ? "the built-in load" : "your own load (a game)")}, room {ambient:0} °C.");
+        Log.Add(LogKind.Calibration, T($"Calibration started with {(builtInLoad ? T("the built-in load") : T("your own load (a game)"))}, room {ambient:0} °C."));
 
         var runner = new CalibrationRunner(Session, RunsPath, new CalibrationOptions(ambient, Preset, builtInLoad));
         runner.Progress += p => CalibrationProgress?.Invoke(p);
@@ -624,7 +723,7 @@ internal sealed class AppController : IDisposable
             }
             catch (Exception ex)
             {
-                outcome = new CalibrationOutcome(false, $"Calibration failed: {ex.Message}", null, null);
+                outcome = new CalibrationOutcome(false, T($"Calibration failed: {ex.Message}"), null, null);
             }
 
             Inventory = FanInventory.Load(Path.Combine(RunsPath, CalibrationFiles.Inventory)) ?? Inventory;
@@ -660,7 +759,7 @@ internal sealed class AppController : IDisposable
         _calibrating = new CancellationTokenSource();
         var cancel = _calibrating.Token;
         UpdatePause();
-        Log.Add(LogKind.Calibration, "Find my fans started.");
+        Log.Add(LogKind.Calibration, T("Find my fans started."));
 
         var thread = new Thread(() =>
         {
@@ -668,14 +767,14 @@ internal sealed class AppController : IDisposable
             try
             {
                 var found = FanDiscovery.Run(Session, cancel, line => CalibrationLog?.Invoke(line), (channel, done) =>
-                    CalibrationProgress?.Invoke(new CalibrationProgress(CalibrationStage.FindingFans, $"Finding fans: {channel}", 0, 0, null, null, done)));
+                    CalibrationProgress?.Invoke(new CalibrationProgress(CalibrationStage.FindingFans, T($"Finding fans: {channel}"), 0, 0, null, null, done)));
                 if (found is null)
                 {
-                    outcome = new CalibrationOutcome(false, "Find my fans didn't finish. Nothing changed.", null, null);
+                    outcome = new CalibrationOutcome(false, T("Find my fans didn't finish. Nothing changed."), null, null);
                 }
                 else if (found.Groups().Count == 0)
                 {
-                    outcome = new CalibrationOutcome(false, "No fan reacted on any output. Are the fans connected to the mainboard (not to a separate fan hub with its own software)?", null, null);
+                    outcome = new CalibrationOutcome(false, T("No fan reacted on any output. Are the fans connected to the mainboard (not to a separate fan hub with its own software)?"), null, null);
                 }
                 else
                 {
@@ -691,14 +790,14 @@ internal sealed class AppController : IDisposable
                     Inventory = found;
                     string names = string.Join(", ", found.Groups().Select(g => g.Name));
                     outcome = new CalibrationOutcome(true,
-                        first ? $"Found {found.Groups().Count} fan groups: {names}. Next: calibrate."
-                        : same ? $"Found the same {found.Groups().Count} fan groups as before."
-                        : $"Your fans are different now ({names}): please calibrate again.", null, null);
+                        first ? T($"Found {found.Groups().Count} fan groups: {names}. Next: calibrate.")
+                        : same ? T($"Found the same {found.Groups().Count} fan groups as before.")
+                        : T($"Your fans are different now ({names}): please calibrate again."), null, null);
                 }
             }
             catch (Exception ex)
             {
-                outcome = new CalibrationOutcome(false, $"Find my fans failed: {ex.Message}", null, null);
+                outcome = new CalibrationOutcome(false, T($"Find my fans failed: {ex.Message}"), null, null);
             }
 
             Session.RestoreAll();
@@ -741,6 +840,6 @@ internal sealed class AppController : IDisposable
         Monitor.FinishSession();
         Monitor.Store.Dispose();
         Session.Dispose();
-        Log.Add(LogKind.Info, "AutoFantic exited: the fans are back on BIOS control.");
+        Log.Add(LogKind.Info, T("AutoFantic exited: the fans are back on BIOS control."));
     }
 }

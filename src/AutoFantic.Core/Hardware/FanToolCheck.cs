@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Hardware;
 
@@ -8,6 +9,9 @@ namespace AutoFantic.Core.Hardware;
 /// </summary>
 public static class FanToolCheck
 {
+    // what a program that only drives the graphics card's fans gets after its name
+    private const string GpuCurve = " (GPU fan curve)";
+
     // process name (without .exe) → display name
     private static readonly Dictionary<string, string> KnownTools = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -18,9 +22,9 @@ public static class FanToolCheck
         ["iCUE"] = "Corsair iCUE",
         ["MSI.CentralServer"] = "MSI Center",
         ["NZXT CAM"] = "NZXT CAM",
-        ["MSIAfterburner"] = "MSI Afterburner (GPU fan curve)",
-        ["GPUTweakIII"] = "ASUS GPU Tweak III (GPU fan curve)",
-        ["PrecisionX_x64"] = "EVGA Precision X1 (GPU fan curve)",
+        ["MSIAfterburner"] = "MSI Afterburner" + GpuCurve,
+        ["GPUTweakIII"] = "ASUS GPU Tweak III" + GpuCurve,
+        ["PrecisionX_x64"] = "EVGA Precision X1" + GpuCurve,
         ["SpeedFan"] = "SpeedFan",
         ["LibreHardwareMonitor"] = "LibreHardwareMonitor",
     };
@@ -33,7 +37,7 @@ public static class FanToolCheck
             using (process)
             {
                 if (KnownTools.TryGetValue(process.ProcessName, out var name))
-                    found.Add(name);
+                    found.Add(name.EndsWith(GpuCurve, StringComparison.Ordinal) ? T($"{name[..^GpuCurve.Length]} (GPU fan curve)") : name);
             }
         }
         return found.ToList();

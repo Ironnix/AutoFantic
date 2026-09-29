@@ -1,4 +1,5 @@
 using AutoFantic.Core.Hardware;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Calibration;
 
@@ -33,7 +34,7 @@ public static class FanDiscovery
         var wait = new SafeWait(session, keys, cancel, log);
         if (!wait.CheckNow())
         {
-            log?.Invoke($"Not starting: {wait.StopReason}.");
+            log?.Invoke(T($"Not starting: {wait.StopReason}."));
             return null;
         }
 
@@ -55,7 +56,7 @@ public static class FanDiscovery
                     if (measured.Count >= 2 && percent != Steps[^1] && WhyNotLower(measured, first) is { } why)
                     {
                         if (why.StartsWith("nothing", StringComparison.Ordinal))
-                            log?.Invoke($"{channel}: not taken lower, {why}");
+                            log?.Invoke(T($"{channel}: not taken lower, {T(why)}"));
                         break;
                     }
                 }
@@ -67,18 +68,18 @@ public static class FanDiscovery
 
             if (wait.StopReason is { } stop)
             {
-                log?.Invoke($"Find my fans stopped: {stop}. All fans are back on BIOS control.");
+                log?.Invoke(T($"Find my fans stopped: {stop}. All fans are back on BIOS control."));
                 return null;
             }
 
             var header = ToHeader(channel, measured.OrderBy(s => s.Percent).ToList(), first);
             headers.Add(header);
-            log?.Invoke(header.Connected ? $"{channel}: {(header.IsPump ? "looks like a pump" : "fan found")}" : $"{channel}: nothing on it");
+            log?.Invoke(header.Connected ? (header.IsPump ? T($"{channel}: looks like a pump") : T($"{channel}: fan found")) : T($"{channel}: nothing on it"));
 
             // let the fan spin back to its BIOS speed before the next one, so they don't mix up
             if (wait.Wait(Settle) != WaitEnd.Done)
             {
-                log?.Invoke($"Find my fans stopped: {wait.StopReason}. All fans are back on BIOS control.");
+                log?.Invoke(T($"Find my fans stopped: {wait.StopReason}. All fans are back on BIOS control."));
                 return null;
             }
         }

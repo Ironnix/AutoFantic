@@ -94,7 +94,7 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
         _keys = KeySensors.Detect(first);
         _wait = new SafeWait(session, _keys, _cancel, Say);
         if (!_wait.CheckNow())
-            return Fail($"Not starting: {_wait.StopReason}.");
+            return Fail(Texts.T($"Not starting: {_wait.StopReason}."));
 
         _sensorOf = new()
         {
@@ -109,19 +109,19 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
         var inventory = FanInventory.Load(inventoryPath);
         if (inventory is null)
         {
-            Report(CalibrationStage.FindingFans, "Finding out which headers have a fan on them (the fans change one by one) …", 0);
+            Report(CalibrationStage.FindingFans, Texts.T("Finding out which headers have a fan on them (the fans change one by one) …"), 0);
             inventory = FanDiscovery.Run(session, _cancel, Say, (channel, done) =>
-                Report(CalibrationStage.FindingFans, $"Finding fans: {channel}", 0.1 * done));
+                Report(CalibrationStage.FindingFans, Texts.T($"Finding fans: {channel}"), 0.1 * done));
             if (inventory is null)
-                return Stopped("Find my fans didn't finish.");
+                return Stopped(Texts.T("Find my fans didn't finish."));
             inventory.Save(inventoryPath);
         }
 
         _groups = inventory.Groups().ToList();
         if (_groups.Count == 0)
-            return Fail("No header with a fan on it was found.");
+            return Fail(Texts.T("No header with a fan on it was found."));
         _channels = _groups.Select(g => g.Headers.Select(h => session.Channels.FirstOrDefault(c => c.Id == h.ControlId)
-            ?? throw new InvalidOperationException($"Fan output {h.ControlId} no longer exists: find the fans again.")).ToList()).ToList();
+            ?? throw new InvalidOperationException(Texts.T($"Fan output {h.ControlId} no longer exists: find the fans again."))).ToList()).ToList();
 
         var plan = CalibrationPlan.Runs(_groups);
         _runs = plan.Count;
@@ -138,9 +138,9 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
             idleGpu = first.Value(_keys.GpuPower);
             var (result, updated, stop) = FansOffTest(inventory);
             if (stop is WaitEnd.Cancelled)
-                return Stopped("Stopped during the fans-off test.");
+                return Stopped(Texts.T("Stopped during the fans-off test."));
             if (stop is WaitEnd.SensorError)
-                return Fail($"{_wait.StopReason}: calibration stopped.");
+                return Fail(Texts.T($"{_wait.StopReason}: calibration stopped."));
             if (result is not null)
             {
                 fansOff = result;
@@ -161,15 +161,15 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
         using var load = options.BuiltInLoad ? session.StartTestLoad(out loadDescription) : null;
         if (options.BuiltInLoad)
         {
-            Say($"Load: {loadDescription}");
+            Say(Texts.T($"Load: {loadDescription}"));
         }
         else
         {
             var waited = WaitForLoad();
             if (waited is WaitEnd.Cancelled)
-                return Stopped("Stopped while waiting for load.");
+                return Stopped(Texts.T("Stopped while waiting for load."));
             if (waited is not WaitEnd.Until)
-                return Fail(waited is WaitEnd.SensorError ? $"{_wait.StopReason}: calibration stopped." : "No load came up: start the calibration again while a game runs.");
+                return Fail(waited is WaitEnd.SensorError ? Texts.T($"{_wait.StopReason}: calibration stopped.") : Texts.T("No load came up: start the calibration again while a game runs."));
         }
 
         // 3. the runs
@@ -188,22 +188,22 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
                     foreach (var channel in _channels[g])
                         session.SetPercent(channel, (float)speeds[g]);
 
-                Say($"Run {_run}/{_runs}{(warmup ? " (warming up)" : "")}: {Describe(speeds)}");
+                Say(warmup ? Texts.T($"Run {_run}/{_runs} (warming up): {Describe(speeds)}") : Texts.T($"Run {_run}/{_runs}: {Describe(speeds)}"));
                 var (samples, fits, stop) = MeasureRun(speeds, warmup);
                 if (stop is WaitEnd.Cancelled)
-                    return Stopped($"Stopped in run {_run}. The runs so far are not kept.");
+                    return Stopped(Texts.T($"Stopped in run {_run}. The runs so far are not kept."));
                 if (stop is WaitEnd.SensorError)
-                    return Fail($"{_wait.StopReason}: calibration stopped.");
+                    return Fail(Texts.T($"{_wait.StopReason}: calibration stopped."));
                 if (stop is WaitEnd.TooHot)
                 {
                     if (!raisedAfterHeat && RaiseSlowest(speeds))
                     {
                         raisedAfterHeat = true;
-                        Say($"Too hot with these speeds: trying again a bit faster ({Describe(speeds)}).");
+                        Say(Texts.T($"Too hot with these speeds: trying again a bit faster ({Describe(speeds)})."));
                         continue;
                     }
                     skipped.Add(Describe(speeds));
-                    Say("Still too hot: run skipped.");
+                    Say(Texts.T("Still too hot: run skipped."));
                     break;
                 }
 
@@ -211,10 +211,10 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
                 {
                     if (attempt < RetriesWithoutLoad)
                     {
-                        Say("Hardly any load during this run (game paused or closed?): repeating it.");
+                        Say(Texts.T("Hardly any load during this run (game paused or closed?): repeating it."));
                         continue;
                     }
-                    Say("Still no load: run skipped.");
+                    Say(Texts.T("Still no load: run skipped."));
                     break;
                 }
 
@@ -232,18 +232,19 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
                 var finals = fits.ToDictionary(kv => kv.Key, kv => options.Ambient + (ThermalModel.IsCpu(kv.Key) ? cpuW : gpuW) * kv.Value.Resistance);
                 observations.Add(new Observation(effective, cpuW, gpuW, finals));
                 loaded.AddRange(samples);
-                Say($"   at {cpuW:0} W / {gpuW:0} W this holds the CPU at {T(finals, Component.Cpu)} and the GPU at {T(finals, Component.GpuCore)}"
-                    + (fits.Values.All(f => f.Reliable) ? "" : " (less certain)"));
+                Say(fits.Values.All(f => f.Reliable)
+                    ? Texts.T($"   at {cpuW:0} W / {gpuW:0} W this holds the CPU at {T(finals, Component.Cpu)} and the GPU at {T(finals, Component.GpuCore)}")
+                    : Texts.T($"   at {cpuW:0} W / {gpuW:0} W this holds the CPU at {T(finals, Component.Cpu)} and the GPU at {T(finals, Component.GpuCore)} (less certain)"));
                 break;
             }
         }
         session.RestoreAll();
 
         if (observations.Count == 0)
-            return Fail("No run finished: nothing to add.");
+            return Fail(Texts.T("No run finished: nothing to add."));
 
         // 4. keep what was learned, then work everything out again
-        Report(CalibrationStage.Calculating, "Working out the quietest settings …", 0.97);
+        Report(CalibrationStage.Calculating, Texts.T("Working out the quietest settings …"), 0.97);
         var standstill = _groups.SelectMany((g, i) => g.Headers.Select(h => (h.Channel, Percent: (float)stoppedAt[i]))).Where(x => x.Percent > 0).ToList();
         if (standstill.Count > 0)
         {
@@ -261,21 +262,21 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
         var store = CalibrationFiles.LoadStore(folder, _groups, Say)
             .Add(new StoredCalibration(now, loadName, options.Ambient, topCpu, topGpu, idleCpu, idleGpu, newRuns.Count), newRuns);
         store.Save(Path.Combine(folder, CalibrationFiles.Store));
-        Say($"{newRuns.Count} runs added to your measurements ({store.Calibrations.Count} calibrations so far).");
+        Say(Texts.T($"{newRuns.Count} runs added to your measurements ({store.Calibrations.Count} calibrations so far)."));
 
         var outcome = CalibrationFiles.Recalculate(folder, inventory, store, options.Preset, options.Ambient, fansOff, fansOffFresh, skipped);
         if (outcome is not { } done)
-            return Fail("Not enough runs to work out curves yet.");
+            return Fail(Texts.T("Not enough runs to work out curves yet."));
 
-        Report(CalibrationStage.Finished, "Done: the new settings are in use.", 1);
-        return new CalibrationOutcome(true, $"Calibration done: {newRuns.Count} runs added.", done.Result, done.Report);
+        Report(CalibrationStage.Finished, Texts.T("Done: the new settings are in use."), 1);
+        return new CalibrationOutcome(true, Texts.T($"Calibration done: {newRuns.Count} runs added."), done.Result, done.Report);
     }
 
     // ── steps ──────────────────────────────────────────────────────────────────────────
 
     private (FansOffResult? Result, FanInventory Inventory, WaitEnd? Stop) FansOffTest(FanInventory inventory)
     {
-        Say($"Fans-off test: all fans stop for up to 2½ minutes (ends early above {FansOffWarmAbove:0} °C) …");
+        Say(Texts.T($"Fans-off test: all fans stop for up to 2½ minutes (ends early above {FansOffWarmAbove:0} °C) …"));
         foreach (var channel in _channels.SelectMany(c => c))
             session.SetPercent(channel, 0);
 
@@ -288,14 +289,14 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
             samples.Add(sample);
             tooWarm = sample.Temps.Any(kv => kv.Key is Component.Cpu or Component.GpuCore && kv.Value > FansOffWarmAbove);
             loadCameUp = IsLoaded(sample.CpuLoad, sample.GpuLoad);
-            Report(CalibrationStage.FansOff, "Fans-off test: every fan stands still", 0.12 * sample.Seconds / FansOffFor.TotalSeconds, sample);
+            Report(CalibrationStage.FansOff, Texts.T("Fans-off test: every fan stands still"), 0.12 * sample.Seconds / FansOffFor.TotalSeconds, sample);
         }, until: () => tooWarm || loadCameUp);
 
         if (end is WaitEnd.Cancelled or WaitEnd.SensorError)
             return (null, inventory, end);
         if (end is WaitEnd.TooHot || loadCameUp)
         {
-            Say(loadCameUp ? "The PC got busy during the test (game started?): fans-off result not used this time." : "Too hot during the fans-off test: result not used.");
+            Say(loadCameUp ? Texts.T("The PC got busy during the test (game started?): fans-off result not used this time.") : Texts.T("Too hot during the fans-off test: result not used."));
             return (null, inventory, null);
         }
 
@@ -323,6 +324,7 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
         }
 
         double cpuW = samples.Average(s => s.CpuPower), gpuW = samples.Average(s => s.GpuPower);
+        // the summary is kept in fans-off.json for the (English) report; the log line is in the chosen language
         if (tooWarm)
         {
             // stopped early while still rising: at least this warm, likely more
@@ -332,26 +334,27 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
             string which = samples[^1].Temps.Where(kv => kv.Key is Component.Cpu or Component.GpuCore && kv.Value > FansOffWarmAbove)
                 .Select(kv => kv.Key == Component.Cpu ? "CPU" : "GPU").FirstOrDefault() ?? "CPU/GPU";
             summary.Add($"without fans at idle (CPU {cpuW:0} W, GPU {gpuW:0} W) the {which} passed {FansOffWarmAbove:0} °C after {elapsed:m\\:ss}: too warm to switch everything off at this idle power");
+            Say(Texts.T($"without fans at idle (CPU {cpuW:0} W, GPU {gpuW:0} W) the {which} passed {FansOffWarmAbove:0} °C after {elapsed:m\\:ss}: too warm to switch everything off at this idle power"));
         }
         else
         {
             summary.Add($"without fans at idle (CPU {cpuW:0} W, GPU {gpuW:0} W): CPU heads for {T(finals, Component.Cpu)}, GPU for {T(finals, Component.GpuCore)}");
+            Say(Texts.T($"without fans at idle (CPU {cpuW:0} W, GPU {gpuW:0} W): CPU heads for {T(finals, Component.Cpu)}, GPU for {T(finals, Component.GpuCore)}"));
         }
-        Say(summary[^1]);
         return (new FansOffResult(DateTimeOffset.Now, cpuW, gpuW, finals, summary), updated, null);
     }
 
     /// <summary>Fans on BIOS control until the user's game (or anything) keeps the PC busy for 20 s.</summary>
     private WaitEnd WaitForLoad()
     {
-        Say("Now start your game (or anything that makes the PC work) and play normally. The calibration starts by itself once there is load.");
+        Say(Texts.T("Now start your game (or anything that makes the PC work) and play normally. The calibration starts by itself once there is load."));
         var start = session.Now;
         int loadedFor = 0;
         return _wait.Wait(options.WaitForLoadUpTo, s =>
         {
             var sample = ToSample(s, start);
             loadedFor = IsLoaded(sample.CpuLoad, sample.GpuLoad) ? loadedFor + 1 : 0;
-            Report(CalibrationStage.WaitingForLoad, $"Waiting for load: start your game (CPU {sample.CpuLoad:0} %, GPU {sample.GpuLoad:0} %)", 0.13, sample);
+            Report(CalibrationStage.WaitingForLoad, Texts.T($"Waiting for load: start your game (CPU {sample.CpuLoad:0} %, GPU {sample.GpuLoad:0} %)"), 0.13, sample);
         }, until: () => loadedFor >= 20);
     }
 
@@ -366,7 +369,7 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
             var sample = ToSample(s, start);
             samples.Add(sample);
             double inRun = Math.Min(1, sample.Seconds / minHold.TotalSeconds);
-            Report(CalibrationStage.Measuring, $"Run {_run} of {_runs}{(warmup ? " (warming up)" : "")}", 0.15 + 0.8 * (_run - 1 + inRun) / _runs, sample, speeds);
+            Report(CalibrationStage.Measuring, warmup ? Texts.T($"Run {_run} of {_runs} (warming up)") : Texts.T($"Run {_run} of {_runs}"), 0.15 + 0.8 * (_run - 1 + inRun) / _runs, sample, speeds);
         }
 
         var end = _wait.Wait(minHold, OnSample);

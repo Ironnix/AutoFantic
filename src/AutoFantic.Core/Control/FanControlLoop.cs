@@ -2,6 +2,7 @@ using AutoFantic.Core.Analysis;
 using AutoFantic.Core.Calibration;
 using AutoFantic.Core.Hardware;
 using AutoFantic.Core.Logging;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Control;
 
@@ -195,7 +196,7 @@ public sealed class FanControlLoop : IDisposable
     private static List<List<FanChannel>> ChannelsFor(FanSession session, CalibrationResult calibration) =>
         calibration.Groups
             .Select(g => g.ControlIds.Select(id => session.Channels.FirstOrDefault(c => c.Id == id)
-                ?? throw new InvalidOperationException($"Fan output {id} no longer exists: find the fans and calibrate again.")).ToList())
+                ?? throw new InvalidOperationException(T($"Fan output {id} no longer exists: find the fans and calibrate again."))).ToList())
             .ToList();
 
     /// <summary>Paused = the BIOS drives the fans. Resuming starts again right at the curves.</summary>
@@ -239,8 +240,8 @@ public sealed class FanControlLoop : IDisposable
                 {
                     // never leave the fans at a fixed speed because of an error: back to the BIOS
                     _session.RestoreAll();
-                    _log.Add(LogKind.Warning, $"Error, fans handed back to the BIOS for 10 s: {ex.Message}");
-                    Alert?.Invoke($"Error, fans handed back to the BIOS: {ex.Message}");
+                    _log.Add(LogKind.Warning, T($"Error, fans handed back to the BIOS for 10 s: {ex.Message}"));
+                    Alert?.Invoke(T($"Error, fans handed back to the BIOS: {ex.Message}"));
                     token.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
                 }
             }
@@ -308,9 +309,9 @@ public sealed class FanControlLoop : IDisposable
                     State = LoopState.SensorProblem;
                     _sensorRetryAt = s.Time + SensorRetryAfter;
                     if (!_retryingSensors)
-                        _log.Add(LogKind.Sensor, $"{sensorError}: fans handed back to the BIOS; trying again every minute.");
+                        _log.Add(LogKind.Sensor, T($"{sensorError}: fans handed back to the BIOS; trying again every minute."));
                     _retryingSensors = false;
-                    Alert?.Invoke($"{sensorError}: fans handed back to the BIOS, trying again in a minute.");
+                    Alert?.Invoke(T($"{sensorError}: fans handed back to the BIOS, trying again in a minute."));
                 }
                 else if (violation is not null || State == LoopState.CoolingDown)
                 {
@@ -318,15 +319,15 @@ public sealed class FanControlLoop : IDisposable
                     {
                         State = LoopState.CoolingDown;
                         _recovery = new SafetyRecovery(_limits, _keys);
-                        _log.Add(LogKind.Safety, $"{violation}: all fans at 100 % until it has cooled down.");
-                        Alert?.Invoke($"{violation}: all fans at 100 % until it has cooled down.");
+                        _log.Add(LogKind.Safety, T($"{violation}: all fans at 100 % until it has cooled down."));
+                        Alert?.Invoke(T($"{violation}: all fans at 100 % until it has cooled down."));
                     }
                     Apply(Enumerable.Repeat(100.0, _channels.Count).ToArray(), speeds);
                     if (_recovery!.IsRecovered(s))
                     {
                         State = LoopState.Running;
                         _controller.Reset();
-                        _log.Add(LogKind.Safety, $"Cooled down again (CPU {cpu:0} °C, GPU {gpu:0} °C): the fans follow their curves again.");
+                        _log.Add(LogKind.Safety, T($"Cooled down again (CPU {cpu:0} °C, GPU {gpu:0} °C): the fans follow their curves again."));
                     }
                 }
                 else
@@ -339,12 +340,14 @@ public sealed class FanControlLoop : IDisposable
                     if (_retryingSensors)
                     {
                         _retryingSensors = false;
-                        _log.Add(LogKind.Sensor, "The sensors work again: AutoFantic controls the fans again.");
+                        _log.Add(LogKind.Sensor, T("The sensors work again: AutoFantic controls the fans again."));
                     }
                     Apply(_controller.Step(s.Time, temps, cpuW, gpuW), speeds);
                     status = _controller.Status;
                     foreach (var change in _controller.Switches.Where(c => !_calibration.Groups[c.Group].Bios))
-                        _log.Add(LogKind.Fans, $"{_calibration.Groups[change.Group].Name} {(change.Off ? "off" : "on again")}: {change.Why}");
+                        _log.Add(LogKind.Fans, change.Off
+                            ? T($"{_calibration.Groups[change.Group].Name} off: {change.Why}")
+                            : T($"{_calibration.Groups[change.Group].Name} on again: {change.Why}"));
                 }
             }
 

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using AutoFantic.Core.Logging;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Hardware;
 
@@ -202,7 +203,7 @@ public static class Handback
                 var lines = session.HandBack(file);
                 File.Delete(path);
                 entry = log.Add(LogKind.Watchdog,
-                    $"AutoFantic ended without handing the fans back (it had driven them since {file.Since.ToLocalTime():dd.MM. HH:mm}): {who} gave them back to the BIOS. {string.Join("; ", lines)}");
+                    T($"AutoFantic ended without handing the fans back (it had driven them since {file.Since.ToLocalTime():dd.MM. HH:mm}): {who} gave them back to the BIOS. {string.Join("; ", lines)}"));
             }
             return entry;
         }

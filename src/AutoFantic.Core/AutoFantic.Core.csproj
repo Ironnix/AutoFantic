@@ -17,4 +17,9 @@
     <InternalsVisibleTo Include="AutoFantic.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- the German texts (see Texts.cs): English text → German text -->
+    <EmbeddedResource Include="Lang\*.json" />
+  </ItemGroup>
+
 </Project>

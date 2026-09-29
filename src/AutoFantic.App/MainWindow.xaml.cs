@@ -25,6 +25,7 @@ using CheckBox = System.Windows.Controls.CheckBox;
 using TextBox = System.Windows.Controls.TextBox;
 using Button = System.Windows.Controls.Button;
 using Path = System.IO.Path;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.App;
 
@@ -96,6 +97,7 @@ public partial class MainWindow : Window
     {
         _app = app;
         InitializeComponent();
+        UiTexts.Translate(this); // the XAML's own texts, before the code sets any
         SetResourceReference(ThemeTextProperty, "TextFillColorPrimaryBrush"); // notices a switch between light and dark
 
         NavOverview.Checked += (_, _) => ShowOnly(OverviewPage);
@@ -118,7 +120,11 @@ public partial class MainWindow : Window
         HealthCalibrate.Click += (_, _) => ShowPage("calibration");
         NavCalibration.Checked += (_, _) => ShowOnly(CalibrationPage);
         NavLog.Checked += (_, _) => ShowOnly(LogPage);
-        NavSettings.Checked += (_, _) => ShowOnly(SettingsPage);
+        NavSettings.Checked += (_, _) =>
+        {
+            ShowOnly(SettingsPage);
+            ShowSelfUsage();
+        };
 
         PauseButton.Click += (_, _) =>
         {
@@ -165,7 +171,7 @@ public partial class MainWindow : Window
         {
             bool ok = AutostartBox.IsChecked == true ? Autostart.Enable() : Autostart.Disable();
             if (!ok)
-                MessageBox.Show(this, "Could not change the Windows start task.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(this, T("Could not change the Windows start task."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
             ShowAutostart();
         };
         OpenPage.Click += (_, _) => OpenInExplorer(_app.PagePath);
@@ -175,21 +181,34 @@ public partial class MainWindow : Window
             if (_app.Log.FilePath is { } log && File.Exists(log))
                 OpenInExplorer(log);
         };
-        VersionText.Text = $"AutoFantic {AppVersion.Text} · early development · MIT License";
+        VersionText.Text = T($"AutoFantic {AppVersion.Text} · early development · MIT License");
         DataPath.Text = _app.RunsPath + (File.Exists(Path.Combine(_app.RunsPath, DataFolder.MigratedNote))
-            ? "  (copied from runs\\)"
+            ? T("  (copied from runs\\)")
             : "");
         ThemeBox.SelectedIndex = (int)_app.Appearance.Theme; // the items are in the order of Theme
         ThemeBox.SelectionChanged += (_, _) =>
         {
             if (ThemeBox.SelectedIndex >= 0)
-                _app.SaveAppearance(new AppearanceSettings((Theme)ThemeBox.SelectedIndex));
+                _app.SaveAppearance(_app.Appearance with { Theme = (Theme)ThemeBox.SelectedIndex });
+        };
+        LanguageBox.SelectedIndex = _app.Appearance.Language switch { "en" => 1, "de" => 2, _ => 0 };
+        LanguageBox.SelectionChanged += (_, _) =>
+        {
+            string language = LanguageBox.SelectedIndex switch { 1 => "en", 2 => "de", _ => "" };
+            if (language == _app.Appearance.Language)
+                return;
+            _app.SaveAppearance(_app.Appearance with { Language = language });
+            if (MessageBox.Show(this, Texts.T("AutoFantic starts again to switch the language. The BIOS has the fans for those few seconds."),
+                    "AutoFantic", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
+                return; // then at the next start
+            _app.StartAgain("--open");
+            System.Windows.Application.Current.Shutdown();
         };
         UpdateDailyBox.IsChecked = _app.Updates.CheckDaily;
         UpdateDailyBox.Click += (_, _) => _app.SaveUpdateSettings(new UpdateSettings(UpdateDailyBox.IsChecked == true));
         UpdateCheckButton.Click += async (_, _) =>
         {
-            _updating = "Checking …";
+            _updating = T("Checking …");
             ShowUpdates();
             await _app.CheckForUpdateAsync();
             _updating = null;
@@ -240,6 +259,8 @@ public partial class MainWindow : Window
         _timer.Tick += (_, _) =>
         {
             UpdateLive();
+            if (SettingsPage.Visibility == Visibility.Visible && _monitorTick % 2 == 0)
+                ShowSelfUsage();
             if (++_monitorTick % MonitorEverySeconds == 0)
             {
                 if (MonitorPage.Visibility == Visibility.Visible)
@@ -288,11 +309,11 @@ public partial class MainWindow : Window
         NavCurves.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         NavHealth.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         QuietPanel.IsEnabled = setUp;
-        NavCalibration.Content = setUp ? "Calibration" : "Set up";
-        CalibrationHeading.Text = setUp ? "Calibration" : "Set up AutoFantic";
+        NavCalibration.Content = setUp ? T("Calibration") : T("Set up");
+        CalibrationHeading.Text = setUp ? T("Calibration") : T("Set up AutoFantic");
         SetupCards.Visibility = setUp ? Visibility.Collapsed : Visibility.Visible;
         InsightCards.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
-        CalibrateTitle.Text = setUp ? "Calibrate" : "Step 2 · Calibrate";
+        CalibrateTitle.Text = setUp ? T("Calibrate") : T("Step 2 · Calibrate");
         BuildFoundFans();
 
         if (setUp && !_wasSetUp && NavCurves.IsChecked == false && NavCalibration.IsChecked == true && IsLoaded)
@@ -320,7 +341,7 @@ public partial class MainWindow : Window
         var names = _app.GroupNames.ToList();
         if (names.Count == 0)
         {
-            FanRows.Children.Add(new TextBlock { Text = "No fans found yet.", Style = (Style)FindResource("Caption") });
+            FanRows.Children.Add(new TextBlock { Text = T("No fans found yet."),Style = (Style)FindResource("Caption") });
             return;
         }
         for (int g = 0; g < names.Count; g++)
@@ -335,7 +356,7 @@ public partial class MainWindow : Window
             name.Children.Add(new TextBlock { Text = names[g], FontSize = 14 });
             name.Children.Add(new TextBlock
             {
-                Text = _app.Recommended is { } r ? CalibrationReport.Role(r.Groups[g]) : "BIOS until the first calibration",
+                Text = _app.Recommended is { } r ? CalibrationReport.Role(r.Groups[g]) : T("BIOS until the first calibration"),
                 Style = (Style)FindResource("Caption"),
             });
             var bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 6, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 16, 0) };
@@ -355,8 +376,8 @@ public partial class MainWindow : Window
         foreach (var preset in Preset.All)
         {
             var content = new StackPanel();
-            content.Children.Add(new TextBlock { Text = preset.Name, FontSize = 15, FontWeight = FontWeights.SemiBold });
-            content.Children.Add(new TextBlock { Text = preset.Description, Style = (Style)FindResource("Caption"), Margin = new Thickness(0, 4, 0, 0) });
+            content.Children.Add(new TextBlock { Text = T(preset.Name), FontSize = 15, FontWeight = FontWeights.SemiBold });
+            content.Children.Add(new TextBlock { Text = T(preset.Description),Style = (Style)FindResource("Caption"), Margin = new Thickness(0, 4, 0, 0) });
             var button = new ToggleButton
             {
                 Style = (Style)FindResource("Choice"),
@@ -378,35 +399,35 @@ public partial class MainWindow : Window
             return;
 
         var (brush, title, detail) = _app.Calibrating
-            ? (Cooling, "Calibrating", "The calibration drives the fans right now.")
+            ? (Cooling, T("Calibrating"), T("The calibration drives the fans right now."))
             : status.State switch
             {
-                LoopState.NotSetUp => (SetUp, "Not set up yet", "The BIOS controls your fans until the first calibration."),
-                LoopState.Paused => (Paused, _app.Sleeping ? "Paused for sleep" : "Paused", "The BIOS controls the fans."),
-                LoopState.CoolingDown => (Cooling, "Cooling down", "A temperature limit was reached: all fans at 100 % until it's cool."),
-                LoopState.SensorProblem => (Problem, "Sensor problem", "A sensor stopped reporting: the BIOS has the fans, retrying every minute."),
-                _ when _app.QuietReason == "away" => (Running, "Extra quiet: you're away", "Every fan at its slowest, the ones that can stop are off. Normal again when you're back."),
-                _ when _app.QuietReason == "night" => (Running, "Extra quiet for the night", $"Every fan at its slowest, the ones that can stop are off, until {_app.Quiet.NightTo}."),
-                _ => (Running, "AutoFantic controls your fans", "They follow your curves. The safety limits always stay on."),
+                LoopState.NotSetUp => (SetUp, T("Not set up yet"), T("The BIOS controls your fans until the first calibration.")),
+                LoopState.Paused => (Paused, _app.Sleeping ? T("Paused for sleep") : T("Paused"), T("The BIOS controls the fans.")),
+                LoopState.CoolingDown => (Cooling, T("Cooling down"), T("A temperature limit was reached: all fans at 100 % until it's cool.")),
+                LoopState.SensorProblem => (Problem, T("Sensor problem"), T("A sensor stopped reporting: the BIOS has the fans, retrying every minute.")),
+                _ when _app.QuietReason == "away" => (Running, T("Extra quiet: you're away"), T("Every fan at its slowest, the ones that can stop are off. Normal again when you're back.")),
+                _ when _app.QuietReason == "night" => (Running, T("Extra quiet for the night"), T($"Every fan at its slowest, the ones that can stop are off, until {_app.Quiet.NightTo}.")),
+                _ => (Running, T("AutoFantic controls your fans"), T("They follow your curves. The safety limits always stay on.")),
             };
         StateDot.Fill = brush;
         LogoDot.Fill = brush;
         StateTitle.Text = title;
         StateDetail.Text = detail;
-        PauseButton.Content = !_app.IsSetUp ? "Set up" : _app.UserPaused ? "Resume" : "Pause";
+        PauseButton.Content = !_app.IsSetUp ? T("Set up") : _app.UserPaused ? T("Resume") : T("Pause");
         PauseButton.IsEnabled = !_app.Calibrating;
 
         CpuTemp.Text = Temp(status.CpuTemp);
         GpuTemp.Text = Temp(status.GpuTemp);
         CpuPower.Text = $"{status.CpuPower:0} W";
         GpuPower.Text = $"{status.GpuPower:0} W";
-        SideStatus.Text = $"{(_app.Effective?.Profile ?? "not set up")} · {status.Time:HH:mm:ss}";
+        SideStatus.Text = $"{T(_app.Effective?.Profile ?? "not set up")} · {status.Time:HH:mm:ss}";
 
         for (int i = 0; i < _fanRows.Count; i++)
         {
             var reading = _app.Calibrating || i >= status.Fans.Count ? null : status.Fans[i];
             _fanRows[i].Bar.Value = reading?.Percent ?? reading?.BiosPercent ?? 0;
-            _fanRows[i].Value.Text = _app.Calibrating ? "test" : Speed(reading);
+            _fanRows[i].Value.Text = _app.Calibrating ? T("test") : Speed(reading);
         }
 
         // the ring sits at the smoothed temperature the fan control reads the curve at
@@ -416,19 +437,19 @@ public partial class MainWindow : Window
         var fan = _selected < status.Fans.Count ? status.Fans[_selected] : null;
         double? followed = fan?.Status?.Temperature ?? CalibrationInsights.Followed(group.Follows, status.CpuTemp, status.GpuTemp);
         Editor.Live = followed is { } t && fan is not null && !_app.Calibrating
-            ? fan.Bios ? (t, fan.BiosPercent, "the BIOS runs it") : (t, fan.Percent, Note(fan.Status))
+            ? fan.Bios ? (t, fan.BiosPercent, T("the BIOS runs it")) : (t, fan.Percent, Note(fan.Status))
             : null;
         Editor.Refresh();
     }
 
     private static string? Note(FanStatus? status) => status switch
     {
-        { Note: FanNote.SlowingDown, CurvePercent: { } c } => $"slowing down gently to {Math.Max(0, c):0} %",
-        { Note: FanNote.SpeedingUp, CurvePercent: { } c } => $"speeding up to {c:0} %",
-        { Note: FanNote.Slowest } => "the slowest speed this fan turns at",
-        { Note: FanNote.Off } => "idle and cool",
-        { Note: FanNote.Starting } => "starting up (short push)",
-        { Note: FanNote.Quiet } => "extra quiet",
+        { Note: FanNote.SlowingDown, CurvePercent: { } c } => T($"slowing down gently to {Math.Max(0, c):0} %"),
+        { Note: FanNote.SpeedingUp, CurvePercent: { } c } => T($"speeding up to {c:0} %"),
+        { Note: FanNote.Slowest } => T("the slowest speed this fan turns at"),
+        { Note: FanNote.Off } => T("idle and cool"),
+        { Note: FanNote.Starting } => T("starting up (short push)"),
+        { Note: FanNote.Quiet } => T("extra quiet"),
         _ => null,
     };
 
@@ -442,13 +463,13 @@ public partial class MainWindow : Window
         }
         ProfileNote.Visibility = _app.CanSwitchPreset ? Visibility.Collapsed : Visibility.Visible;
         ProfileNote.Text = _app.IsSetUp
-            ? "Calibrate once with this version to switch presets."
-            : "Available after the first calibration.";
+            ? T("Calibrate once with this version to switch presets.")
+            : T("Available after the first calibration.");
 
         var profile = current.Profile;
-        LimitValue.Text = _app.IsSetUp ? current.Name : "–";
-        LimitDetail.Text = !_app.IsSetUp ? "after the first calibration"
-            : profile.MaxCooling ? "every fan up to its knee"
+        LimitValue.Text = _app.IsSetUp ? T(current.Name) : "–";
+        LimitDetail.Text = !_app.IsSetUp ? T("after the first calibration")
+            : profile.MaxCooling ? T("every fan up to its knee")
             : $"CPU ≤ {profile.Cpu:0} °C · GPU ≤ {profile.GpuCore:0} °C";
     }
 
@@ -458,7 +479,7 @@ public partial class MainWindow : Window
         bool ok = _app.SwitchPreset(preset);
         Cursor = null;
         if (!ok)
-            MessageBox.Show(this, "Not enough measurements to switch yet.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T("Not enough measurements to switch yet."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
         UpdatePresets();
     }
 
@@ -501,9 +522,8 @@ public partial class MainWindow : Window
         bool custom = _app.IsCustom(_selected), bios = effective.Bios;
         CurveTitle.Text = effective.Name;
         CurveSubtitle.Text = bios
-            ? $"Controlled by the BIOS · {CalibrationReport.Role(effective)} · AutoFantic's {(custom ? "curve (yours)" : "curve")} is kept for later"
-            : $"Follows the {CalibrationInsights.FollowsName(effective.Follows)} · {CalibrationReport.Role(effective)} · "
-              + (custom ? "your own curve" : "the recommended curve");
+            ? T($"Controlled by the BIOS · {CalibrationReport.Role(effective)} · AutoFantic's {(custom ? T("curve (yours)") : T("curve"))} is kept for later")
+            : T($"Follows the {CalibrationInsights.FollowsName(effective.Follows)} · {CalibrationReport.Role(effective)} · {(custom ? T("your own curve") : T("the recommended curve"))}");
         BiosBox.IsChecked = bios;
         BiosHint.Visibility = bios ? Visibility.Visible : Visibility.Collapsed;
         Editor.IsEnabled = !bios;
@@ -519,22 +539,22 @@ public partial class MainWindow : Window
         AllowStop.IsEnabled = canStop && !bios;
         AllowStop.IsChecked = allows;
         StopHint.Text = !canStop
-            ? "These fans keep turning at 0 %, so they can't be switched off."
+            ? T("These fans keep turning at 0 %, so they can't be switched off.")
             : allows
-            ? $"Off at idle up to {part} {offAt:0} °C, on again above {offAt + CurveController.Hysteresis:0} °C or under load."
-              + (_app.RecommendsStop(_selected) ? "" : " (Your choice: the calibration keeps them on.)")
-            : "Or drag a point down to 0 %." + (_app.RecommendsStop(_selected) ? " Recommended." : "");
+            ? T($"Off at idle up to {part} {offAt:0} °C, on again above {offAt + CurveController.Hysteresis:0} °C or under load.")
+              + (_app.RecommendsStop(_selected) ? "" : T(" (Your choice: the calibration keeps them on.)"))
+            : T("Or drag a point down to 0 %.") + (_app.RecommendsStop(_selected) ? T(" Recommended.") : "");
         Editor.OffBelow = allows ? offAt : null;
         ResetCurve.IsEnabled = custom && !bios;
 
         // the same curve for when AutoFantic isn't running: 4 points for a BIOS, the whole curve for Afterburner
         bool gpu = effective.Follows == Component.GpuCore;
         var points = gpu ? effective.Curve : CalibrationResult.BiosPoints(effective.Curve);
-        FallbackText.Text = (gpu ? "Afterburner curve: " : "BIOS curve: ")
+        FallbackText.Text = (gpu ? T("Afterburner curve: ") : T("BIOS curve: "))
             + string.Join("  ·  ", points.Select(p => $"{p.Temperature:0} °C → {p.Percent:0} %"));
         FallbackText.ToolTip = gpu
-            ? "Without AutoFantic: MSI Afterburner's custom fan curve for the graphics card (a BIOS can't control it)."
-            : "Without AutoFantic: the mainboard's own fan curve (e.g. MSI Smart Fan). A BIOS can only follow the CPU temperature.";
+            ? T("Without AutoFantic: MSI Afterburner's custom fan curve for the graphics card (a BIOS can't control it).")
+            : T("Without AutoFantic: the mainboard's own fan curve (e.g. MSI Smart Fan). A BIOS can only follow the CPU temperature.");
     }
 
     private void OnCurvesChanged() => Dispatcher.BeginInvoke(() =>
@@ -552,26 +572,26 @@ public partial class MainWindow : Window
     {
         if (!double.TryParse(RoomTemp.Text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double room) || room is < 5 or > 45)
         {
-            MessageBox.Show(this, "Please enter the room temperature in °C, e.g. 22.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T("Please enter the room temperature in °C, e.g. 22."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         _log.Clear();
         CalibrationChart.Clear();
         _app.StartCalibration(room, LoadBuiltIn.IsChecked == true);
-        CalibrationStatus.Text = "Starting …";
+        CalibrationStatus.Text = T("Starting …");
         UpdateCalibrationState();
     }
 
     private void FindFans()
     {
-        var answer = MessageBox.Show(this, "About 2 minutes, you'll hear the fans change. Start?",
-            "Find my fans", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        var answer = MessageBox.Show(this, T("About 2 minutes, you'll hear the fans change. Start?"),
+            T("Find my fans"), MessageBoxButton.OKCancel, MessageBoxImage.Question);
         if (answer != MessageBoxResult.OK)
             return;
         _log.Clear();
         CalibrationChart.Clear();
         _app.StartFindFans();
-        CalibrationStatus.Text = "Finding fans …";
+        CalibrationStatus.Text = T("Finding fans …");
         UpdateCalibrationState();
         ShowPage("calibration");
     }
@@ -581,7 +601,7 @@ public partial class MainWindow : Window
         bool running = _app.Calibrating;
         // the first calibration waits for step 1, so the user sees what was found first
         StartCalibrationButton.IsEnabled = !running && (_app.IsSetUp || _app.Inventory is not null);
-        StartCalibrationButton.ToolTip = StartCalibrationButton.IsEnabled || running ? null : "Find your fans first.";
+        StartCalibrationButton.ToolTip = StartCalibrationButton.IsEnabled || running ? null : T("Find your fans first.");
         StopCalibrationButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         CalibrateSetup.IsEnabled = !running;
         CalibrationLive.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
@@ -597,8 +617,8 @@ public partial class MainWindow : Window
     {
         FoundFans.Children.Clear();
         var groups = _app.Inventory?.Groups() ?? [];
-        FindFansTitle.Text = groups.Count > 0 ? "Step 1 · Find my fans  ✓" : "Step 1 · Find my fans";
-        SetupFindFans.Content = groups.Count > 0 ? "Find my fans again" : "Find my fans";
+        FindFansTitle.Text = groups.Count > 0 ? T("Step 1 · Find my fans  ✓") : T("Step 1 · Find my fans");
+        SetupFindFans.Content = groups.Count > 0 ? T("Find my fans again") : T("Find my fans");
         FoundFans.Visibility = groups.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         for (int g = 0; g < groups.Count; g++)
         {
@@ -609,7 +629,7 @@ public partial class MainWindow : Window
             row.Children.Add(new TextBlock { Text = group.Name, FontSize = 14, Margin = new Thickness(0, 0, 10, 0) });
             row.Children.Add(new TextBlock
             {
-                Text = $"up to {top:0} rpm · " + (group.CanStop ? "can stop at 0 %" : "keeps turning at 0 %"),
+                Text = T($"up to {top:0} rpm · {(group.CanStop ? T("can stop at 0 %") : T("keeps turning at 0 %"))}"),
                 Style = (Style)FindResource("Caption"),
                 VerticalAlignment = VerticalAlignment.Center,
             });
@@ -618,7 +638,7 @@ public partial class MainWindow : Window
         if (groups.Count > 0)
             FoundFans.Children.Add(new TextBlock
             {
-                Text = "Several fans on one output, or a loud one? You can say so after calibrating.",
+                Text = T("Several fans on one output, or a loud one? You can say so after calibrating."),
                 Style = (Style)FindResource("Caption"),
                 Margin = new Thickness(0, 6, 0, 0),
             });
@@ -672,14 +692,14 @@ public partial class MainWindow : Window
         if (p.Speeds is { } speeds && _app.Inventory is { } inventory)
         {
             var groups = inventory.Groups();
-            CalibrationSpeeds.Text = "Fans now: " + string.Join(" · ", groups.Select((g, i) => i < speeds.Count ? $"{g.Name} {speeds[i]:0} %" : g.Name));
+            CalibrationSpeeds.Text = T("Fans now: ") + string.Join(" · ", groups.Select((g, i) => i < speeds.Count ? $"{g.Name} {speeds[i]:0} %" : g.Name));
         }
         else
         {
             CalibrationSpeeds.Text = p.Stage switch
             {
-                CalibrationStage.FansOff => "Every fan stands still for up to 2½ minutes.",
-                CalibrationStage.WaitingForLoad => "The fans are on BIOS control until the load is there.",
+                CalibrationStage.FansOff => T("Every fan stands still for up to 2½ minutes."),
+                CalibrationStage.WaitingForLoad => T("The fans are on BIOS control until the load is there."),
                 _ => "",
             };
         }
@@ -702,7 +722,7 @@ public partial class MainWindow : Window
         UpdateCalibrationState();
         UpdatePresets();
         BuildInsights();
-        MessageBox.Show(this, outcome.Message + (outcome.Success && outcome.Result is not null ? "\n\nThe new settings are in use." : ""),
+        MessageBox.Show(this, outcome.Message + (outcome.Success && outcome.Result is not null ? T("\n\nThe new settings are in use.") : ""),
             "AutoFantic", MessageBoxButton.OK, outcome.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
     });
 
@@ -727,7 +747,7 @@ public partial class MainWindow : Window
     {
         WhyRows.Children.Clear();
         var preset = _app.Preset;
-        WhyIntro.Text = $"{preset.Name}: what limits the cooling at each load, and why the fans run as they do.";
+        WhyIntro.Text = T($"{T(preset.Name)}: what limits the cooling at each load, and why the fans run as they do.");
         foreach (var level in _app.Levels())
         {
             var row = new Grid { Margin = new Thickness(0, 0, 0, 14) };
@@ -735,7 +755,7 @@ public partial class MainWindow : Window
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             var head = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
-            head.Children.Add(new TextBlock { Text = Capitalize(level.Label), FontSize = 14, FontWeight = FontWeights.SemiBold });
+            head.Children.Add(new TextBlock { Text = Capitalize(T(level.Label)),FontSize = 14, FontWeight = FontWeights.SemiBold });
             head.Children.Add(new TextBlock { Text = $"CPU {level.CpuPower:0} W · GPU {level.GpuPower:0} W", Style = (Style)FindResource("Caption") });
             head.Children.Add(Badge($"{CalibrationInsights.Name(level.Bottleneck)} {level.Temperature:0} / {level.Allowed:0} °C", level.Temperature > level.Allowed));
 
@@ -744,7 +764,7 @@ public partial class MainWindow : Window
             WhyRows.Children.Add(row);
         }
         if (WhyRows.Children.Count == 0)
-            WhyRows.Children.Add(new TextBlock { Text = "Calibrate once with this version to see this.", Style = (Style)FindResource("Caption") });
+            WhyRows.Children.Add(new TextBlock { Text = T("Calibrate once with this version to see this."),Style = (Style)FindResource("Caption") });
     }
 
     private void BuildLoudness()
@@ -763,12 +783,12 @@ public partial class MainWindow : Window
 
             var count = new ComboBox { Width = 110, Margin = new Thickness(0, 0, 10, 0) };
             for (int n = 1; n <= 6; n++)
-                count.Items.Add(n == 1 ? "1 fan" : $"{n} fans");
+                count.Items.Add(n == 1 ? T("1 fan") : T($"{n} fans"));
             count.SelectedIndex = Math.Clamp(group.Headers.Sum(h => h.FanCount), 1, 6) - 1;
 
             var loudness = new ComboBox { Width = 110 };
             foreach (var (label, _) in LoudnessChoices)
-                loudness.Items.Add(label);
+                loudness.Items.Add(T(label));
             double db = group.Headers[0].LoudnessDb;
             loudness.SelectedIndex = Array.FindIndex(LoudnessChoices, c => Math.Abs(c.Db - db) < 0.1) is >= 0 and var i ? i : 1;
 
@@ -812,7 +832,7 @@ public partial class MainWindow : Window
             row.Children.Add(Dot(g));
             var name = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             name.Children.Add(new TextBlock { Text = group.Name, FontSize = 14 });
-            name.Children.Add(new TextBlock { Text = $"{CalibrationReport.Role(group)} · follows the {CalibrationInsights.FollowsName(group.Follows)}", Style = (Style)FindResource("Caption") });
+            name.Children.Add(new TextBlock { Text = T($"{CalibrationReport.Role(group)} · follows the {CalibrationInsights.FollowsName(group.Follows)}"),Style = (Style)FindResource("Caption") });
             Place(row, name, 1);
             Place(row, bars, 2);
             EffectRows.Children.Add(row);
@@ -841,19 +861,19 @@ public partial class MainWindow : Window
         var runs = _app.Runs();
         if (runs.Count == 0)
         {
-            RunRows.Children.Add(new TextBlock { Text = "No runs stored yet.", Style = (Style)FindResource("Caption") });
+            RunRows.Children.Add(new TextBlock { Text = T("No runs stored yet."),Style = (Style)FindResource("Caption") });
             return;
         }
 
         var names = _app.Inventory!.Groups().Select(g => g.IsGpu ? "GPU" : $"#{g.Headers[0].Channel}").ToList();
-        RunRows.Children.Add(RunRow(true, "When", "Load", string.Join(" · ", names) + " (%)", "CPU / GPU W", "CPU / GPU °C", "Bottleneck", false));
+        RunRows.Children.Add(RunRow(true, T("When"), T("Load"), string.Join(" · ", names) + " (%)", "CPU / GPU W", "CPU / GPU °C", T("Bottleneck"), false));
         string? lastSource = null;
         foreach (var run in runs)
         {
-            string source = run.Source == lastSource ? "" : run.Source + (run.Imported ? " (imported)" : "");
+            string source = run.Source == lastSource ? "" : LoadName(run.Source) + (run.Imported ? T(" (imported)") : "");
             lastSource = run.Source;
             string bottleneck = $"{CalibrationInsights.Name(run.Bottleneck)} {run.Final.GetValueOrDefault(run.Bottleneck):0} °C, "
-                + (run.Headroom >= 0 ? $"{run.Headroom:0} below limit" : $"{-run.Headroom:0} above limit");
+                + (run.Headroom >= 0 ? T($"{run.Headroom:0} below limit") : T($"{-run.Headroom:0} above limit"));
             RunRows.Children.Add(RunRow(false, $"{run.Time:dd.MM. HH:mm}", source, string.Join(" · ", run.Speeds.Select(s => $"{s.Percent:0}")),
                 $"{run.CpuPower:0} / {run.GpuPower:0}", $"{Temp(run.Final.GetValueOrDefault(Component.Cpu))} / {Temp(run.Final.GetValueOrDefault(Component.GpuCore))}",
                 bottleneck, run.Headroom < 0));
@@ -906,7 +926,7 @@ public partial class MainWindow : Window
                 Style = (Style)FindResource("Choice"),
                 Padding = new Thickness(14, 6, 14, 6),
                 Margin = new Thickness(0, 0, 8, 8),
-                Content = new TextBlock { Text = label, FontSize = 14 },
+                Content = new TextBlock { Text = T(label), FontSize = 14 },
                 IsChecked = span == selected,
             };
             var mine = span;
@@ -926,8 +946,8 @@ public partial class MainWindow : Window
     {
         var limits = new Core.Analysis.SafetyLimits();
         var preset = _app.Preset;
-        LimitsNote.Text = $"Limits: CPU {limits.CpuMax:0} °C · GPU {limits.GpuCoreMax:0} °C · hotspot and memory {limits.GpuHotspotMax:0} °C. Above them every fan runs at 100 %."
-            + Environment.NewLine + $"{preset.Name} keeps the GPU at up to {preset.Profile.GpuCore:0} °C and the hotspot at up to {preset.Profile.GpuHotspot:0} °C.";
+        LimitsNote.Text = T($"Limits: CPU {limits.CpuMax:0} °C · GPU {limits.GpuCoreMax:0} °C · hotspot and memory {limits.GpuHotspotMax:0} °C. Above them every fan runs at 100 %.")
+            + Environment.NewLine + T($"{T(preset.Name)} keeps the GPU at up to {preset.Profile.GpuCore:0} °C and the hotspot at up to {preset.Profile.GpuHotspot:0} °C.");
         var store = _app.Monitor.Store;
         var to = _app.Loop.Last?.Time ?? DateTimeOffset.Now;
         var from = to - _range;
@@ -935,7 +955,7 @@ public partial class MainWindow : Window
         var data = series.ToDictionary(x => x.Key, x => store.Query(x.Key, from, to));
 
         ChartLine? Line(Series x, Color color) =>
-            data.TryGetValue(x.Key, out var points) && points.Count > 0 ? new ChartLine(x.Name, color, points) : null;
+            data.TryGetValue(x.Key, out var points) && points.Count > 0 ? new ChartLine(x.Kind is SeriesKind.FanPercent or SeriesKind.FanRpm ? x.Name : T(x.Name), color, points) : null;
         IReadOnlyList<ChartLine> Lines(params ChartLine?[] lines) => [.. lines.OfType<ChartLine>()];
 
         TempChart.Show(Lines(Line(HistoryRecorder.CpuTemp, LiveChart.CpuColor), Line(HistoryRecorder.GpuTemp, LiveChart.GpuColor),
@@ -948,7 +968,7 @@ public partial class MainWindow : Window
         var percent = series.Where(x => x.Kind == SeriesKind.FanPercent).ToList();
         var rpm = series.Where(x => x.Kind == SeriesKind.FanRpm).ToList();
         FanChart.Show(Lines([.. percent.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, "%", min: 0, max: 100);
-        RpmChart.Show(Lines([.. rpm.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, "rpm", min: 0);
+        RpmChart.Show(Lines([.. rpm.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, T("rpm"), min: 0);
 
         BuildValues(series, data);
     }
@@ -962,7 +982,7 @@ public partial class MainWindow : Window
         foreach (double width in new[] { 2.4, 1, 1, 1, 1 })
             ValueRows.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width, GridUnitType.Star) });
         string range = Ranges.First(r => r.Span == _range).Label;
-        ValuesIntro.Text = $"The last {(range.StartsWith("1 ", StringComparison.Ordinal) ? range[2..] : range)}. Hover over a chart to see its values at that time.";
+        ValuesIntro.Text = T($"The last {T(range.StartsWith("1 ", StringComparison.Ordinal) ? range[2..] : range)}. Hover over a chart to see its values at that time.");
 
         void Row(int row, string[] cells, bool header)
         {
@@ -977,26 +997,26 @@ public partial class MainWindow : Window
             }
         }
 
-        Row(0, ["", "now", "lowest", "average", "highest"], header: true);
+        Row(0, ["", T("now"), T("lowest"), T("average"), T("highest")], header: true);
         int r = 1;
         foreach (var x in series.OrderBy(x => x.Kind))
         {
             if (!data.TryGetValue(x.Key, out var points) || points.Count == 0)
                 continue;
-            string V(double v) => $"{v:0} {x.Unit}";
+            string V(double v) => $"{v:0} {T(x.Unit)}";
             Row(r++, [Describe(x), V(points[^1].Avg), V(points.Min(p => p.Min)), V(points.Average(p => p.Avg)), V(points.Max(p => p.Max))], header: false);
         }
         if (r == 1)
-            Row(1, ["Nothing recorded in this time yet.", "", "", "", ""], header: false);
+            Row(1, [T("Nothing recorded in this time yet."), "", "", "", ""], header: false);
     }
 
     private static string Describe(Series x) => x.Kind switch
     {
-        SeriesKind.Temperature => $"{x.Name} temperature",
-        SeriesKind.Power => $"{x.Name} power",
-        SeriesKind.Load => $"{x.Name} load",
-        SeriesKind.FanPercent => $"{x.Name} speed",
-        _ => $"{x.Name} rpm",
+        SeriesKind.Temperature => T($"{T(x.Name)} temperature"),
+        SeriesKind.Power => T($"{T(x.Name)} power"),
+        SeriesKind.Load => T($"{T(x.Name)} load"),
+        SeriesKind.FanPercent => T($"{x.Name} speed"),
+        _ => T($"{x.Name} rpm"),
     };
 
     /// <summary>What a warning can watch: temperatures, power, load and the fans' rpm.</summary>
@@ -1039,13 +1059,13 @@ public partial class MainWindow : Window
             what.Items.Add(Describe(c));
         what.SelectedIndex = choices.FindIndex(c => c.Key == rule.Series);
         var direction = new ComboBox { Width = 100, Margin = new Thickness(0, 0, 8, 0) };
-        direction.Items.Add("above");
-        direction.Items.Add("below");
+        direction.Items.Add(T("above"));
+        direction.Items.Add(T("below"));
         direction.SelectedIndex = rule.Above ? 0 : 1;
         var limit = new TextBox { Width = 64, Text = rule.Limit.ToString("0", CultureInfo.InvariantCulture), VerticalContentAlignment = VerticalAlignment.Center };
-        var unit = new TextBlock { Text = choices[Math.Max(0, what.SelectedIndex)].Unit, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0), MinWidth = 26 };
+        var unit = new TextBlock { Text = T(choices[Math.Max(0, what.SelectedIndex)].Unit),VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 12, 0), MinWidth = 26 };
         var seconds = new TextBox { Width = 52, Text = rule.Seconds.ToString(CultureInfo.InvariantCulture), VerticalContentAlignment = VerticalAlignment.Center };
-        var remove = new Button { Content = "✕", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(12, 0, 0, 0), ToolTip = "Remove" };
+        var remove = new Button { Content = "✕", Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(12, 0, 0, 0), ToolTip = T("Remove") };
 
         void Changed()
         {
@@ -1055,7 +1075,7 @@ public partial class MainWindow : Window
             if (index >= rules.Count)
                 return;
             var series = choices[Math.Max(0, what.SelectedIndex)];
-            unit.Text = series.Unit;
+            unit.Text = T(series.Unit);
             rules[index] = new WarningRule(series.Key, direction.SelectedIndex == 0,
                 double.TryParse(limit.Text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double l) ? l : rule.Limit,
                 int.TryParse(seconds.Text, out int sec) ? Math.Clamp(sec, 1, 3600) : rule.Seconds,
@@ -1077,7 +1097,7 @@ public partial class MainWindow : Window
         };
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-        foreach (var element in new UIElement[] { enabled, what, direction, limit, unit, new TextBlock { Text = "for", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) }, seconds,
+        foreach (var element in new UIElement[] { enabled, what, direction, limit, unit, new TextBlock { Text = T("for"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) }, seconds,
                      new TextBlock { Text = "s", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) }, remove })
             row.Children.Add(element);
         return row;
@@ -1118,7 +1138,7 @@ public partial class MainWindow : Window
     {
         var now = _app.Loop.Last?.Time ?? DateTimeOffset.Now;
         ReportsNow.Text = _app.Monitor.CurrentSession is { } current
-            ? $"Now: {Sessions.Pretty(current.Program)} for {(now - current.Start).TotalMinutes:0} min."
+            ? T($"Now: {Sessions.Pretty(current.Program)} for {(now - current.Start).TotalMinutes:0} min.")
             : "";
     }
 
@@ -1145,25 +1165,25 @@ public partial class MainWindow : Window
 
         var games = sessions.GroupBy(s => Sessions.Pretty(s.Program)).OrderByDescending(g => g.Sum(s => s.Length.TotalSeconds));
         FillTable(GameRows, [2, 1, 1.3, 1, 1.2, 1, 1, 1.1],
-            ["", "sessions", "time", "GPU Ø", "hotspot max", "CPU Ø", "fans Ø", "GPU power Ø"],
+            ["", Texts.T("sessions"), Texts.T("time"), "GPU Ø", Texts.T("hotspot max"), "CPU Ø", Texts.T("fans Ø"), Texts.T("GPU power Ø")],
             games.Select(g => new[]
             {
                 g.Key, $"{g.Count()}", Length(TimeSpan.FromSeconds(g.Sum(s => s.Length.TotalSeconds))),
                 T(Weighted(g, s => Avg(s, HistoryRecorder.GpuTemp)), "°C"), T(g.Max(s => Max(s, HistoryRecorder.GpuHotspot)), "°C"),
                 T(Weighted(g, s => Avg(s, HistoryRecorder.CpuTemp)), "°C"), T(Weighted(g, Fans), "%"), T(Weighted(g, s => Avg(s, HistoryRecorder.GpuPower)), "W"),
             }),
-            "No sessions yet: play something for a few minutes.");
+            Texts.T("No sessions yet: play something for a few minutes."));
 
         FillTable(SessionRows, [1.3, 2, 1.1, 1, 1.4, 1.4, 1.2, 1],
-            ["when", "", "length", "preset", "GPU Ø / max", "CPU Ø / max", "hotspot max", "fans Ø"],
+            [Texts.T("when"), "", Texts.T("length"), Texts.T("preset"), "GPU Ø / max", "CPU Ø / max", Texts.T("hotspot max"), Texts.T("fans Ø")],
             sessions.Take(50).Select(s => new[]
             {
-                s.Start.ToLocalTime().ToString("dd.MM. HH:mm", CultureInfo.InvariantCulture), Sessions.Pretty(s.Program), Length(s.Length), s.Preset,
+                s.Start.ToLocalTime().ToString("dd.MM. HH:mm", CultureInfo.InvariantCulture), Sessions.Pretty(s.Program), Length(s.Length), Texts.T(s.Preset),
                 $"{T(Avg(s, HistoryRecorder.GpuTemp), "°C")} / {T(Max(s, HistoryRecorder.GpuTemp), "°C")}",
                 $"{T(Avg(s, HistoryRecorder.CpuTemp), "°C")} / {T(Max(s, HistoryRecorder.CpuTemp), "°C")}",
                 T(Max(s, HistoryRecorder.GpuHotspot), "°C"), T(Fans(s), "%"),
             }),
-            "The last 50 sessions show here.");
+            Texts.T("The last 50 sessions show here."));
     }
 
     /// <summary>A simple table: a header row in grey, then the rows; the first column left, the others right.</summary>
@@ -1222,12 +1242,13 @@ public partial class MainWindow : Window
         var today = DateOnly.FromDateTime(DateTime.Now);
         var changes = CoolingHealth.SinceCalibration(_app.Monitor.Store.HealthDays());
         ShowHealthChart(changes, today); // every day kept, also from earlier calibrations
+        BuildFanWear();
 
         if (_app.Recommended is not { } calibration || _app.HealthReference is not { } reference)
         {
             HealthDot.Fill = Paused;
-            HealthTitle.Text = "Calibrate first";
-            HealthDetail.Text = "Cooling health compares with the calibration.";
+            HealthTitle.Text = T("Calibrate first");
+            HealthDetail.Text = T("Cooling health compares with the calibration.");
             HealthCompareIntro.Text = "";
             HealthCompareNote.Visibility = Visibility.Collapsed;
             HealthCompareRows.Children.Clear();
@@ -1247,55 +1268,114 @@ public partial class MainWindow : Window
         if (first is null && now is null)
         {
             HealthDot.Fill = SetUp;
-            HealthTitle.Text = "Collecting data";
-            HealthDetail.Text = $"{_app.HealthMinutes()} of {CoolingHealth.MinMinutes} steady minutes in the last 7 days. Just use the PC as usual; a game helps.";
+            HealthTitle.Text = T("Collecting data");
+            HealthDetail.Text = T($"{_app.HealthMinutes()} of {CoolingHealth.MinMinutes} steady minutes in the last 7 days. Just use the PC as usual; a game helps.");
         }
         else if (first is null)
         {
             int since = Math.Max(0, today.DayNumber - DateOnly.FromDateTime(reference.LocalDateTime.Date).DayNumber);
             HealthDot.Fill = SetUp;
-            HealthTitle.Text = "Learning what normal looks like";
-            HealthDetail.Text = $"The first week after the calibration is what's normal for this PC ({Math.Min(since, 7)} of 7 days); the comparison with it starts a week later.";
+            HealthTitle.Text = T("Learning what normal looks like");
+            HealthDetail.Text = T($"The first week after the calibration is what's normal for this PC ({Math.Min(since, 7)} of 7 days); the comparison with it starts a week later.");
         }
         else
         {
             double worst = Math.Max(first.Cpu ?? 0, first.Gpu ?? 0);
-            string detail = $"At full load, compared with the first week after the calibration: CPU {Change(first.Cpu, first.CpuPercent)}, GPU {Change(first.Gpu, first.GpuPercent)}.";
+            string detail = T($"At full load, compared with the first week after the calibration: CPU {Change(first.Cpu, first.CpuPercent)}, GPU {Change(first.Gpu, first.GpuPercent)}.");
             (HealthDot.Fill, HealthTitle.Text, HealthDetail.Text) = worst < CoolingHealth.Fine
-                ? (Running, "Cooling as good as after the calibration", detail)
+                ? (Running, T("Cooling as good as after the calibration"), detail)
                 : worst < CoolingHealth.Clean
-                ? (Attention, "A bit warmer than after the calibration", detail + " Check the dust filters when you get to it.")
-                : (Problem, "Clearly warmer than after the calibration", detail + " Clean the dust filters, fans and heatsinks, then calibrate again.");
+                ? (Attention, T("A bit warmer than after the calibration"), detail + T(" Check the dust filters when you get to it."))
+                : (Problem, T("Clearly warmer than after the calibration"), detail + T(" Clean the dust filters, fans and heatsinks, then calibrate again."));
             HealthCalibrate.Visibility = worst >= CoolingHealth.Fine ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // the last 7 days against earlier weeks, in °C and as a share of the rise above the room
-        HealthCompareIntro.Text = "The last 7 days against earlier weeks, at the same power and fan speeds. + means warmer now.";
+        HealthCompareIntro.Text = T("The last 7 days against earlier weeks, at the same power and fan speeds. + means warmer now.");
         FillTable(HealthCompareRows, [2.2, 1.5, 1.5],
-            ["", "CPU at full load", "GPU at full load"],
-            comparisons.Select(c => new[] { c.Label, Change(c.Cpu, c.CpuPercent), Change(c.Gpu, c.GpuPercent) }),
-            "Nothing to compare yet. The first week after the calibration is what's normal; the comparisons start a week after that.",
+            ["", T("CPU at full load"), T("GPU at full load")],
+            comparisons.Select(c => new[] { T(c.Label), Change(c.Cpu, c.CpuPercent), Change(c.Gpu, c.GpuPercent) }),
+            T("Nothing to compare yet. The first week after the calibration is what's normal; the comparisons start a week after that."),
             headerWhenEmpty: false);
         var rises = new List<string>();
         if (rise.Cpu is { } cpuRise)
-            rises.Add($"the CPU heats up {cpuRise:0} °C above the room at {topCpu:0} W");
+            rises.Add(T($"the CPU heats up {cpuRise:0} °C above the room at {topCpu:0} W"));
         if (rise.Gpu is { } gpuRise)
-            rises.Add($"the GPU {gpuRise:0} °C at {topGpu:0} W");
+            rises.Add(T($"the GPU {gpuRise:0} °C at {topGpu:0} W"));
         HealthCompareNote.Text = comparisons.Count == 0 || rises.Count == 0 ? ""
-            : $"The % is how much worse the cooling works. At full load {string.Join(" and ", rises)}: 1 °C more on {rise.Cpu ?? rise.Gpu:0} °C is {100 / (rise.Cpu ?? rise.Gpu ?? 100):0.0} %.";
+            : T($"The % is how much worse the cooling works. At full load {string.Join(T(" and "), rises)}: 1 °C more on {rise.Cpu ?? rise.Gpu:0} °C is {100 / (rise.Cpu ?? rise.Gpu ?? 100):0.0} %.");
         HealthCompareNote.Visibility = HealthCompareNote.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        string Extra(double? extra, string part) => extra is not { } e ? $"not enough {part} load yet" : $"{Signed(e)} °C than the model expects";
+        string Extra(double? extra, string part) => extra is not { } e ? T($"not enough {part} load yet") : T($"{Signed(e)} °C than the model expects");
         FillTable(HealthRows, [1.6, 3],
             ["", ""],
             now is null ? [] :
             [
-                ["Room", $"about {calibration.Ambient + now.RoomShift:0} °C ({Signed(now.RoomShift)} °C against the {calibration.Ambient:0} °C given at the calibration)"],
-                [$"CPU at full load ({topCpu:0} W)", Extra(now.CpuExtra, "CPU")],
-                [$"GPU at full load ({topGpu:0} W)", Extra(now.GpuExtra, "GPU")],
-                ["Based on", $"{now.Minutes} steady minutes"],
+                [T("Room"), T($"about {calibration.Ambient + now.RoomShift:0} °C ({Signed(now.RoomShift)} °C against the {calibration.Ambient:0} °C given at the calibration)")],
+                [T($"CPU at full load ({topCpu:0} W)"), Extra(now.CpuExtra, "CPU")],
+                [T($"GPU at full load ({topGpu:0} W)"), Extra(now.GpuExtra, "GPU")],
+                [T("Based on"), T($"{now.Minutes} steady minutes")],
             ],
-            "Nothing to show yet.");
+            T("Nothing to show yet."));
+    }
+
+    /// <summary>Every fan against its first week: a row with the verdict and *Start again*, and a chart over the chosen range.</summary>
+    private void BuildFanWear()
+    {
+        FanWearRows.Children.Clear();
+        FanWearRows.RowDefinitions.Clear();
+        FanWearRows.ColumnDefinitions.Clear();
+        FanWearRows.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.4, GridUnitType.Star) });
+        FanWearRows.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+        FanWearRows.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var fans = _app.FanWearNow();
+        var names = _app.GroupNames.ToList();
+        Color ColorOf(string name, int order) => Palette[(names.IndexOf(name) is >= 0 and var i ? i : order) % Palette.Length];
+        static string Signed(double v) => v.ToString("+0.0;-0.0;0.0", CultureInfo.CurrentCulture);
+
+        for (int f = 0; f < fans.Count; f++)
+        {
+            var (group, result, hasFirstWeek, _) = fans[f];
+            FanWearRows.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var name = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 8), VerticalAlignment = VerticalAlignment.Center };
+            name.Children.Add(new Ellipse { Width = 10, Height = 10, Fill = SeriesBrush(ColorOf(group.Name, f)), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+            name.Children.Add(new TextBlock { Text = group.Name, FontSize = 13.5, VerticalAlignment = VerticalAlignment.Center });
+            string verdict = result switch
+            {
+                { Change: null, FirstWeekDays: 0 } => T("No steady running recorded yet."),
+                { Learning: true } => T($"Learning what's normal ({result.FirstWeekDays} of 7 days)."),
+                { Change: null } => T("Nothing to compare yet: the comparison starts a week after its first week, at the speeds it ran at then."),
+                { Change: <= FanWear.Worn } => T($"⚠ {-result.Change!.Value:0.0} % slower than in its first week: probably worn or blocked. Clean it, or replace it soon."),
+                { Change: <= FanWear.Check } => T($"⚠ {-result.Change!.Value:0.0} % slower than in its first week: clean it and listen for grinding or rattling."),
+                { Change: >= 8 } => T($"Turns {result.Change!.Value:0.0} % faster than in its first week (a changed BIOS setting?)."),
+                _ => T($"Turns as fast as in its first week ({Signed(result.Change!.Value)} %)."),
+            };
+            var text = new TextBlock { Text = verdict, FontSize = 13, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 12, 8), VerticalAlignment = VerticalAlignment.Center };
+            if (result.Change <= FanWear.Check)
+                text.FontWeight = FontWeights.SemiBold;
+            var again = new Button { Content = T("Start again"), Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 0, 8), VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = T("After cleaning or replacing it: a new first week from today."),Visibility = hasFirstWeek ? Visibility.Visible : Visibility.Hidden };
+            again.Click += (_, _) =>
+            {
+                if (MessageBox.Show(this, T($"Start a new first week for {group.Name} from today? Do this after cleaning or replacing it."),"AutoFantic", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+                    _app.StartFanAgain(group);
+            };
+            foreach (var (element, column) in new (UIElement, int)[] { (name, 0), (text, 1), (again, 2) })
+            {
+                Grid.SetRow(element, f);
+                Place(FanWearRows, element, column);
+            }
+        }
+        if (fans.Count == 0)
+            FanWearRows.Children.Add(new TextBlock { Text = T("Find the fans first (Calibration)."),Style = (Style)FindResource("Caption") });
+
+        bool weekly = _healthRange > TimeSpan.FromDays(45);
+        var to = new DateTimeOffset(DateOnly.FromDateTime(DateTime.Now).AddDays(1).ToDateTime(TimeOnly.MinValue));
+        var from = to - _healthRange;
+        var first = DateOnly.FromDateTime(from.LocalDateTime);
+        FanWearChart.Show([.. fans.Select((fan, f) => new ChartLine(fan.Group.Name, ColorOf(fan.Group.Name, f),
+            FanWear.Points(fan.Daily.Where(d => d.Day >= first), weekly)))], from, to, "%");
     }
 
     /// <summary>
@@ -1308,13 +1388,12 @@ public partial class MainWindow : Window
         var to = new DateTimeOffset(today.AddDays(1).ToDateTime(TimeOnly.MinValue));
         var from = to - _healthRange;
         var shown = changes.Where(c => c.Day >= DateOnly.FromDateTime(from.LocalDateTime)).ToList();
-        HealthChartIntro.Text = (weekly ? "Per week (the band: its coolest and warmest day)" : "Per day")
-            + ": how much warmer CPU and GPU run at full load than in the first week after their calibration (0 = as good as then), and the room against the calibration. A new calibration starts again at 0.";
+        HealthChartIntro.Text = T($"{(weekly ? T("Per week (the band: its coolest and warmest day)") : T("Per day"))}: how much warmer CPU and GPU run at full load than in the first week after their calibration (0 = as good as then), and the room against the calibration. A new calibration starts again at 0.");
         HealthChart.Show(
         [
             new ChartLine("CPU", LiveChart.CpuColor, CoolingHealth.Points(shown, c => c.Cpu, weekly)),
             new ChartLine("GPU", LiveChart.GpuColor, CoolingHealth.Points(shown, c => c.Gpu, weekly)),
-            new ChartLine("room", Color.FromRgb(0x8a, 0x89, 0x84), CoolingHealth.Points(shown, c => c.RoomShift, weekly)),
+            new ChartLine(T("room"), Color.FromRgb(0x8a, 0x89, 0x84), CoolingHealth.Points(shown, c => c.RoomShift, weekly)),
         ], from, to, "°C");
     }
 
@@ -1327,7 +1406,7 @@ public partial class MainWindow : Window
         foreach (var entry in entries.Reverse().Take(LogShown))
             LogRows.Children.Add(LogRow(entry));
         if (entries.Count == 0)
-            LogRows.Children.Add(new TextBlock { Text = "Nothing yet.", Style = (Style)FindResource("Caption") });
+            LogRows.Children.Add(new TextBlock { Text = T("Nothing yet."),Style = (Style)FindResource("Caption") });
     }
 
     private void OnLogAdded(ActivityEntry entry) => Dispatcher.BeginInvoke(() =>
@@ -1348,7 +1427,7 @@ public partial class MainWindow : Window
         var time = entry.Time.ToLocalTime();
         row.Children.Add(new TextBlock
         {
-            Text = time.Date == DateTime.Today ? $"today {time:HH:mm:ss}" : $"{time:dd.MM. HH:mm:ss}",
+            Text = time.Date == DateTime.Today ? T($"today {time:HH:mm:ss}") : $"{time:dd.MM. HH:mm:ss}",
             Style = (Style)FindResource("Caption"),
         });
         var brush = entry.Kind switch
@@ -1362,7 +1441,7 @@ public partial class MainWindow : Window
         };
         var kind = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
         kind.Children.Add(new Ellipse { Width = 8, Height = 8, Fill = brush, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
-        kind.Children.Add(new TextBlock { Text = entry.Kind.ToString(), FontSize = 13 });
+        kind.Children.Add(new TextBlock { Text = T(entry.Kind.ToString()), FontSize = 13 });
         Place(row, kind, 1);
         Place(row, new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, FontSize = 13.5 }, 2);
         return row;
@@ -1372,11 +1451,30 @@ public partial class MainWindow : Window
 
     private void UpdateCalibrationInfo()
     {
-        var sources = _app.Recommended?.Sources ?? [];
-        CalibrationInfo.Text = _app.Recommended is not { } r ? "Not calibrated yet."
-            : sources.Count == 0 ? $"Calibrated {r.Created:dd.MM.yyyy HH:mm}."
-            : $"{_app.Store.Calibrations.Count} calibration(s), {_app.Store.Runs.Count} runs: " + string.Join("; ", sources);
+        // the calibrations as stored (English) → in the chosen language; the result's own list only for an old result without them
+        var sources = _app.Store.Calibrations.Count > 0
+            ? _app.Store.Calibrations.Select(c => T($"{c.Time:dd.MM. HH:mm} · {LoadName(c.Load)} · {c.Runs} runs")).ToList()
+            : _app.Recommended?.Sources ?? [];
+        CalibrationInfo.Text = _app.Recommended is not { } r ? T("Not calibrated yet.")
+            : sources.Count == 0 ? T($"Calibrated {r.Created:dd.MM.yyyy HH:mm}.")
+            : T($"{_app.Store.Calibrations.Count} calibration(s), {_app.Store.Runs.Count} runs: {string.Join("; ", sources)}");
         OpenPage.IsEnabled = File.Exists(_app.PagePath);
+    }
+
+    /// <summary>
+    /// A calibration's load as stored in English ("built-in load (CPU on all cores + NVIDIA …)",
+    /// "your own load", or a game's name) in the chosen language; a game's name stays as it is.
+    /// </summary>
+    private static string LoadName(string stored)
+    {
+        const string builtIn = "built-in load (", allCores = "CPU on all cores + ";
+        if (stored.StartsWith(builtIn, StringComparison.Ordinal) && stored.EndsWith(')'))
+        {
+            string inner = stored[builtIn.Length..^1];
+            inner = inner.StartsWith(allCores, StringComparison.Ordinal) ? T($"CPU on all cores + {inner[allCores.Length..]}") : T(inner);
+            return T($"built-in load ({inner})");
+        }
+        return stored is "your own load" or "calibration" ? T(stored) : stored;
     }
 
     /// <summary>
@@ -1387,17 +1485,28 @@ public partial class MainWindow : Window
     {
         AutostartBox.IsChecked = Autostart.IsEnabled();
         AutostartNote.Text = AutostartBox.IsChecked == true && Autostart.OtherCopy() is { } other
-            ? $"⚠ It starts another copy: {other}. Switch it off and on again to start this one."
-            : "Starts when you log in, without an admin prompt.";
+            ? T($"⚠ It starts another copy: {other}. Switch it off and on again to start this one.")
+            : T("Starts when you log in, without an admin prompt.");
     }
 
     private void OnUpdateStateChanged() => Dispatcher.BeginInvoke(ShowUpdates);
+
+    /// <summary>AutoFantic's own memory and CPU, now and with the window closed (Settings → Developer).</summary>
+    private void ShowSelfUsage()
+    {
+        var (cpu, average) = SelfUsage.Cpu();
+        string closed = SelfUsage.WindowClosed is { } c
+            ? T($"With the window closed: {c.Bytes / 1048576.0:0} MB (measured at {c.At:HH:mm}).")
+            : T("With the window closed: not measured yet (it's measured every minute while the window is closed).");
+        SelfUsageText.Text = T($"AutoFantic uses {SelfUsage.Memory() / 1048576.0:0} MB of memory and {cpu:0.0} % CPU right now, with this window open. {closed} ")
+            + T($"On average since the start: {average:0.00} % CPU. The watchdog, a second small AutoFantic, adds about 6 MB.");
+    }
 
     /// <summary>A fan's speed in a few characters: "45 %", "off", "BIOS", or "BIOS 45 %" for a fan the user gave to the BIOS.</summary>
     internal static string Speed(FanReading? fan) => fan switch
     {
         { Bios: true, BiosPercent: { } bios } => $"BIOS {bios:0} %",
-        { Percent: 0 } => "off",
+        { Percent: 0 } => T("off"),
         { Percent: { } p } => $"{p:0} %",
         _ => "BIOS",
     };
@@ -1408,12 +1517,12 @@ public partial class MainWindow : Window
         var release = _app.UpdateAvailable;
         UpdateStatus.Text = _updating
             ?? (release is not null
-                ? $"{release.Name} is available{(release.Published is { } p ? $" (from {p.LocalDateTime:dd.MM.yyyy})" : "")}; you have {AppVersion.Text}. "
-                  + $"Updating downloads it ({release.ZipSize / 1e6:0} MB), closes AutoFantic for a few seconds (the BIOS keeps the fans) and starts the new version. Your data stays."
-                : _app.UpdateProblem is { } problem ? $"You have {AppVersion.Text}. {problem}"
-                : _app.UpdateChecked is { } at ? $"You have {AppVersion.Text}, the newest version (checked at {at.LocalDateTime:HH:mm})."
-                : $"You have {AppVersion.Text}.");
-        UpdateInstall.Content = release is null ? "" : $"Update to {release.Version}";
+                ? T($"{release.Name} is available{(release.Published is { } p ? T($" (from {p.LocalDateTime:dd.MM.yyyy})") : "")}; you have {AppVersion.Text}. ")
+                  + T($"Updating downloads it ({release.ZipSize / 1e6:0} MB), closes AutoFantic for a few seconds (the BIOS keeps the fans) and starts the new version. Your data stays.")
+                : _app.UpdateProblem is { } problem ? T($"You have {AppVersion.Text}. {problem}")
+                : _app.UpdateChecked is { } at ? T($"You have {AppVersion.Text}, the newest version (checked at {at.LocalDateTime:HH:mm}).")
+                : T($"You have {AppVersion.Text}."));
+        UpdateInstall.Content = release is null ? "" : T($"Update to {release.Version}");
         UpdateInstall.Visibility = UpdateNotes.Visibility = release is not null ? Visibility.Visible : Visibility.Collapsed;
         UpdateInstall.IsEnabled = UpdateCheckButton.IsEnabled = _updating is null;
     }
@@ -1423,14 +1532,14 @@ public partial class MainWindow : Window
     {
         if (_app.UpdateAvailable is not { } release)
             return;
-        _updating = $"Downloading {release.Name} …";
+        _updating = T($"Downloading {release.Name} …");
         UpdateProgress.Value = 0;
         UpdateProgress.Visibility = Visibility.Visible;
         ShowUpdates();
         var progress = new Progress<double>(share =>
         {
             UpdateProgress.Value = share;
-            UpdateStatus.Text = _updating = $"Downloading {release.Name} … {share * 100:0} %";
+            UpdateStatus.Text = _updating = T($"Downloading {release.Name} … {share * 100:0} %");
         });
         try
         {
@@ -1441,18 +1550,18 @@ public partial class MainWindow : Window
             _updating = null;
             UpdateProgress.Visibility = Visibility.Collapsed;
             ShowUpdates();
-            MessageBox.Show(this, $"The update didn't work: {ex.Message}\n\nAutoFantic {AppVersion.Text} keeps running as before.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, T($"The update didn't work: {ex.Message}\n\nAutoFantic {AppVersion.Text} keeps running as before."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        UpdateStatus.Text = $"{release.Name} is installed. AutoFantic starts again …";
+        UpdateStatus.Text = T($"{release.Name} is installed. AutoFantic starts again …");
         try
         {
             _app.StartNewVersion("--open");
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"{release.Name} is installed, but it didn't start ({ex.Message}). Start AutoFantic again yourself.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T($"{release.Name} is installed, but it didn't start ({ex.Message}). Start AutoFantic again yourself."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         System.Windows.Application.Current.Shutdown();
     }
@@ -1470,11 +1579,11 @@ public partial class MainWindow : Window
         string console = Path.Combine(AppContext.BaseDirectory, "autofantic-spike.exe");
         if (!File.Exists(console))
         {
-            MessageBox.Show(this, $"The test console (autofantic-spike.exe) isn't next to AutoFantic ({AppContext.BaseDirectory}).", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T($"The test console (autofantic-spike.exe) isn't next to AutoFantic ({AppContext.BaseDirectory})."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        var answer = MessageBox.Show(this, "AutoFantic closes (the fans go back to the BIOS) and the test console opens. Start AutoFantic again afterwards.",
-            "Test console", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        var answer = MessageBox.Show(this, T("AutoFantic closes (the fans go back to the BIOS) and the test console opens. Start AutoFantic again afterwards."),
+            T("Test console"),MessageBoxButton.OKCancel, MessageBoxImage.Information);
         if (answer != MessageBoxResult.OK)
             return;
 

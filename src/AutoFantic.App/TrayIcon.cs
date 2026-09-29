@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Drawing.Drawing2D;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using AutoFantic.Core;
 using AutoFantic.Core.Control;
 
 namespace AutoFantic.App;
@@ -18,11 +19,12 @@ internal sealed class TrayIcon : IDisposable
     private readonly ToolStripMenuItem _temps = new() { Enabled = false };
     private readonly List<ToolStripMenuItem> _fans = [];
     private readonly ContextMenuStrip _menu = new();
-    private readonly ToolStripMenuItem _pause = new("Pause (the BIOS controls the fans)");
-    private readonly ToolStripMenuItem _autostart = new("Start with Windows");
+    private readonly ToolStripMenuItem _pause = new(Texts.T("Pause (the BIOS controls the fans)"));
+    private readonly ToolStripMenuItem _autostart = new(Texts.T("Start with Windows"));
     private readonly ToolStripMenuItem _update = new() { Visible = false };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly ConcurrentQueue<string> _alerts = new();
+    private int _selfTick;
     private readonly Dictionary<LoopState, Icon> _icons;
     private MainWindow? _window;
     private Version? _announced;
@@ -41,7 +43,7 @@ internal sealed class TrayIcon : IDisposable
         };
 
         var menu = _menu;
-        var open = new ToolStripMenuItem("Open AutoFantic", null, (_, _) => OpenWindow(_app.IsSetUp ? "overview" : "calibration"));
+        var open = new ToolStripMenuItem(Texts.T("Open AutoFantic"), null, (_, _) => OpenWindow(_app.IsSetUp ? "overview" : "calibration"));
         open.Font = new Font(menu.Font, FontStyle.Bold);
         menu.Items.Add(open);
         menu.Items.Add(_temps);
@@ -50,7 +52,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add(_autostart);
         menu.Items.Add(_update);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit (fans back to the BIOS)", null, (_, _) => System.Windows.Application.Current.Shutdown());
+        menu.Items.Add(Texts.T("Exit (fans back to the BIOS)"), null, (_, _) => System.Windows.Application.Current.Shutdown());
         BuildFanItems();
 
         _pause.Click += (_, _) =>
@@ -63,7 +65,7 @@ internal sealed class TrayIcon : IDisposable
         {
             bool ok = _autostart.Checked ? Autostart.Disable() : Autostart.Enable();
             if (!ok)
-                MessageBox.Show("Could not change the Windows start task.", "AutoFantic", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(Texts.T("Could not change the Windows start task."), "AutoFantic", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             _autostart.Checked = Autostart.IsEnabled();
         };
 
@@ -91,16 +93,16 @@ internal sealed class TrayIcon : IDisposable
         if (quiet)
             return;
         if (_app.UpdatedFrom is { } from)
-            _icon.ShowBalloonTip(5000, $"AutoFantic updated to {Core.AppVersion.Text}",
-                $"From {from}. What's new: Settings → Updates.", ToolTipIcon.Info);
+            _icon.ShowBalloonTip(5000, Texts.T($"AutoFantic updated to {Core.AppVersion.Text}"),
+                Texts.T($"From {from}. What's new: Settings → Updates."), ToolTipIcon.Info);
         else if (_app.UnexpectedEnd is { } ended)
-            _icon.ShowBalloonTip(10000, "AutoFantic ended unexpectedly last time", ended, ToolTipIcon.Warning);
+            _icon.ShowBalloonTip(10000, Texts.T("AutoFantic ended unexpectedly last time"), ended, ToolTipIcon.Warning);
         else if (!_app.IsSetUp)
-            _icon.ShowBalloonTip(5000, "AutoFantic isn't set up yet",
-                "The BIOS keeps your fans until the first calibration.", ToolTipIcon.Info);
+            _icon.ShowBalloonTip(5000, Texts.T("AutoFantic isn't set up yet"),
+                Texts.T("The BIOS keeps your fans until the first calibration."), ToolTipIcon.Info);
         else
-            _icon.ShowBalloonTip(5000, "AutoFantic is running",
-                "Double-click to open, right-click for quick actions.", ToolTipIcon.Info);
+            _icon.ShowBalloonTip(5000, Texts.T("AutoFantic is running"),
+                Texts.T("Double-click to open, right-click for quick actions."), ToolTipIcon.Info);
     }
 
     /// <summary>One disabled menu item per fan group, after the temperatures; rebuilt when the groups change (the first calibration).</summary>
@@ -141,6 +143,10 @@ internal sealed class TrayIcon : IDisposable
 
     private void Refresh()
     {
+        // AutoFantic's own memory without the window (Settings → Developer), once a minute while it's closed
+        if (_window is null && ++_selfTick % 60 == 0)
+            SelfUsage.RememberWindowClosed();
+
         while (_alerts.TryDequeue(out var alert))
         {
             _balloonOpensSettings = false;
@@ -151,10 +157,10 @@ internal sealed class TrayIcon : IDisposable
         if (_app.UpdateAvailable is { } release && release.Version != _announced)
         {
             _announced = release.Version;
-            _update.Text = $"Update to {release.Version} …";
+            _update.Text = Texts.T($"Update to {release.Version} …");
             _update.Visible = true;
             _balloonOpensSettings = true;
-            _icon.ShowBalloonTip(8000, $"{release.Name} is available", "Click here to update (Settings → Updates).", ToolTipIcon.Info);
+            _icon.ShowBalloonTip(8000, Texts.T($"{release.Name} is available"), Texts.T("Click here to update (Settings → Updates)."), ToolTipIcon.Info);
         }
 
         if (_app.Loop.Last is not { } status)
@@ -164,15 +170,15 @@ internal sealed class TrayIcon : IDisposable
             BuildFanItems();
 
         _icon.Icon = _icons[status.State];
-        string state = _app.Calibrating ? "calibrating"
+        string state = _app.Calibrating ? Texts.T("calibrating")
             : status.State switch
             {
-                LoopState.Paused => _app.Sleeping ? "paused for sleep" : "paused, BIOS in control",
-                LoopState.CoolingDown => "cooling down, all fans 100 %",
-                LoopState.SensorProblem => "sensor problem, BIOS in control",
-                LoopState.NotSetUp => "not set up yet, BIOS in control",
-                _ when _app.QuietReason is { } quiet => $"extra quiet ({quiet})",
-                _ => "running",
+                LoopState.Paused => _app.Sleeping ? Texts.T("paused for sleep") : Texts.T("paused, BIOS in control"),
+                LoopState.CoolingDown => Texts.T("cooling down, all fans 100 %"),
+                LoopState.SensorProblem => Texts.T("sensor problem, BIOS in control"),
+                LoopState.NotSetUp => Texts.T("not set up yet, BIOS in control"),
+                _ when _app.QuietReason is { } quiet => Texts.T($"extra quiet ({Texts.T(quiet)})"),
+                _ => Texts.T("running"),
             };
         string temps = $"CPU {T(status.CpuTemp)} · GPU {T(status.GpuTemp)}";
         string tip = $"AutoFantic · {temps}\n{state}";
@@ -183,7 +189,7 @@ internal sealed class TrayIcon : IDisposable
             var fan = i < status.Fans.Count ? status.Fans[i] : null;
             _fans[i].Text = $"{_fans[i].Tag}: {MainWindow.Speed(fan)}";
         }
-        _pause.Text = _app.UserPaused ? "Resume (AutoFantic controls the fans)" : "Pause (the BIOS controls the fans)";
+        _pause.Text = _app.UserPaused ? Texts.T("Resume (AutoFantic controls the fans)") : Texts.T("Pause (the BIOS controls the fans)");
         _pause.Enabled = _app.IsSetUp && !_app.Calibrating;
     }
 

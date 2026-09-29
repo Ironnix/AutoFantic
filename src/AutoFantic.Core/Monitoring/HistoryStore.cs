@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Monitoring;
 
@@ -19,7 +20,7 @@ public sealed record Series(string Key, string Name, SeriesKind Kind)
     {
         SeriesKind.Temperature => "°C",
         SeriesKind.Power => "W",
-        SeriesKind.FanRpm => "rpm",
+        SeriesKind.FanRpm => T("rpm"),
         _ => "%",
     };
 }
@@ -38,7 +39,8 @@ public sealed record HealthDay(DateOnly Day, DateTimeOffset Calibration, HealthR
 /// Older points are deleted as time goes on, so the file stays at a few tens of MB at most. Writes
 /// happen when a 5-second stretch is complete (a handful of rows), never every second. Thread-safe:
 /// the fan control writes, the window reads. Also keeps the game sessions (<see cref="GameSession"/>,
-/// for the reports) and the cooling health of every day, both small and kept for good.
+/// for the reports), the cooling health of every day and every fan's RPM per speed step and day
+/// (<see cref="FanWear"/>), all small and kept for good.
 /// </summary>
 public sealed class HistoryStore : IDisposable
 {
@@ -90,6 +92,7 @@ public sealed class HistoryStore : IDisposable
             CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, program TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL,
                 preset TEXT NOT NULL, stats TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS health (day INTEGER PRIMARY KEY, calibration INTEGER NOT NULL, result TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS fans (day INTEGER NOT NULL, fan TEXT NOT NULL, steps TEXT NOT NULL, PRIMARY KEY (day, fan)) WITHOUT ROWID;
             """);
         using var read = Command("SELECT id, key, name, kind FROM series");
         using var reader = read.ExecuteReader();
@@ -246,6 +249,38 @@ public sealed class HistoryStore : IDisposable
             while (reader.Read())
                 if (JsonSerializer.Deserialize<HealthResult>(reader.GetString(2)) is { } result)
                     days.Add(new HealthDay(DateOnly.FromDayNumber(reader.GetInt32(0)), DateTimeOffset.FromUnixTimeSeconds(reader.GetInt64(1)), result));
+            return days;
+        }
+    }
+
+    /// <summary>One fan's day for the worn fan detection (<see cref="FanWear"/>).</summary>
+    public void SaveFanDay(FanDay day)
+    {
+        lock (_lock)
+        {
+            if (_disposed)
+                return;
+            using var upsert = Command("INSERT OR REPLACE INTO fans (day, fan, steps) VALUES ($day, $fan, $steps)");
+            upsert.Parameters.AddWithValue("$day", day.Day.DayNumber);
+            upsert.Parameters.AddWithValue("$fan", day.Fan);
+            upsert.Parameters.AddWithValue("$steps", JsonSerializer.Serialize(day.Steps));
+            upsert.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>Every fan's days worked out so far, oldest first.</summary>
+    public IReadOnlyList<FanDay> FanDays()
+    {
+        lock (_lock)
+        {
+            if (_disposed)
+                return [];
+            using var query = Command("SELECT day, fan, steps FROM fans ORDER BY day");
+            using var reader = query.ExecuteReader();
+            var days = new List<FanDay>();
+            while (reader.Read())
+                days.Add(new FanDay(DateOnly.FromDayNumber(reader.GetInt32(0)), reader.GetString(1),
+                    JsonSerializer.Deserialize<Dictionary<int, FanStep>>(reader.GetString(2)) ?? []));
             return days;
         }
     }

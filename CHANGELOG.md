@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.8] - 29.09.2026
+
+### New
+
+- **German interface:** *Settings → Language*: like Windows, English or Deutsch. AutoFantic starts again to switch.
+- **Worn fans:** *Cooling health → Fans* compares how fast each fan turns at the same setting with its first week. A worn bearing or dirt makes a fan slower; from 8 % slower AutoFantic says so next to the clock. *Start again* after cleaning or replacing a fan.
+- *Settings → Developer* shows how much memory and CPU AutoFantic itself uses, now and with the window closed.
+- **Code signing prepared** (SignPath, free for open source). Once AutoFantic is signed, updates must be signed by the same publisher or they aren't installed.
+
 ## [0.1.7] - 30.09.2026
 
 ### New
@@ -17,7 +26,7 @@
 
 ### Good to know
 
-- 0.1.0 can't update itself: download 0.2.0 by hand once, unpack it over the old one (or anywhere), and switch *Start with Windows* off and on again if it points to the old copy. Every later version is one click.
+- 0.1.0 can't update itself: download this version by hand once, unpack it over the old one (or anywhere), and switch *Start with Windows* off and on again if it points to the old copy. Every later version is one click.
 
 ## [0.1.0] - 30.09.2026
 

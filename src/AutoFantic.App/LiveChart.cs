@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using static AutoFantic.Core.Texts;
 using Point = System.Windows.Point;
 using Pen = System.Windows.Media.Pen;
 using Brush = System.Windows.Media.Brush;
@@ -57,8 +58,8 @@ internal sealed class LiveChart : FrameworkElement
             dc.DrawLine(grid, new Point(plot.Left, Y(t)), new Point(plot.Right, Y(t)));
             Label(dc, $"{t:0} °C", new Point(plot.Left - 6, Y(t)), text, HorizontalAlignment.Right);
         }
-        Label(dc, "5 min ago", new Point(plot.Left, plot.Bottom + 12), text, HorizontalAlignment.Left);
-        Label(dc, "now", new Point(plot.Right, plot.Bottom + 12), text, HorizontalAlignment.Right);
+        Label(dc, T("5 min ago"), new Point(plot.Left, plot.Bottom + 12), text, HorizontalAlignment.Left);
+        Label(dc, T("now"), new Point(plot.Right, plot.Bottom + 12), text, HorizontalAlignment.Right);
 
         Color cpu = SeriesColors.For(CpuColor, this), gpu = SeriesColors.For(GpuColor, this);
         Series(dc, p => p.Cpu, cpu, X, Y);

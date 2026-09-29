@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- For SignPath (see CODE_SIGNING.md): paste this as the project's artifact configuration.
+     The GitHub artifact is a zip with the two exes at its root; both must say they're AutoFantic
+     in the version the release workflow passes. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="AutoFantic.exe" product-name="AutoFantic" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="autofantic-spike.exe" product-name="AutoFantic" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

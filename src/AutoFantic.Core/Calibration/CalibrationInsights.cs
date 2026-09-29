@@ -1,3 +1,5 @@
+using static AutoFantic.Core.Texts;
+
 namespace AutoFantic.Core.Calibration;
 
 /// <summary>One measured run, with the part that came closest to its limit (the bottleneck).</summary>
@@ -36,17 +38,17 @@ public static class CalibrationInsights
     {
         Component.Cpu => "CPU",
         Component.GpuCore => "GPU",
-        Component.GpuHotspot => "GPU hotspot",
-        Component.Warmest => "CPU or GPU (the warmer)",
-        _ => "GPU memory",
+        Component.GpuHotspot => T("GPU hotspot"),
+        Component.Warmest => T("CPU or GPU (the warmer)"),
+        _ => T("GPU memory"),
     };
 
     /// <summary>What a curve's temperature axis is, in words: "CPU temperature", "GPU temperature" or "the warmer of CPU and GPU".</summary>
     public static string FollowsName(Component c) => c switch
     {
-        Component.Cpu => "CPU temperature",
-        Component.Warmest => "warmer of CPU and GPU",
-        _ => "GPU temperature",
+        Component.Cpu => T("CPU temperature"),
+        Component.Warmest => T("warmer of CPU and GPU"),
+        _ => T("GPU temperature"),
     };
 
     /// <summary>The temperature a curve following <paramref name="c"/> is read at.</summary>
@@ -108,15 +110,14 @@ public static class CalibrationInsights
         string part = Name(bottleneck);
 
         if (!row.MeetsTarget)
-            return $"Even with the fans this fast the {part} reaches {temperature:0} °C, above the {allowed:0} °C of {profile.Name}. "
-                + "Here the safety limits take over (all fans to 100 % if it gets critical).";
+            return T($"Even with the fans this fast the {part} reaches {temperature:0} °C, above the {allowed:0} °C of {T(profile.Name)}. Here the safety limits take over (all fans to 100 % if it gets critical).");
 
         if (raised.Count == 0)
         {
             string slow = off.Count == groups.Count
-                ? "every fan can be off"
-                : off.Count > 0 ? $"{string.Join(" and ", off)} can be off and the rest run at their slowest" : "every fan runs at its slowest speed";
-            return $"Cool enough: {slow}. The warmest part is the {part} at {temperature:0} °C, {allowed - temperature:0} °C below its limit.";
+                ? T("every fan can be off")
+                : off.Count > 0 ? T($"{string.Join(T(" and "), off)} can be off and the rest run at their slowest") : T("every fan runs at its slowest speed");
+            return T($"Cool enough: {slow}. The warmest part is the {part} at {temperature:0} °C, {allowed - temperature:0} °C below its limit.");
         }
 
         // which of the raised fans does the most for the limiting part per dB of noise
@@ -133,14 +134,13 @@ public static class CalibrationInsights
             .ToList();
 
         var main = reasons[0];
-        string text = $"The {part} is the limit ({temperature:0} of {allowed:0} °C). {main.Group.Name} runs at {main.Speed:0} %";
-        text += main.PerDb > 0.05
-            ? $": it cools the {part} by about {main.PerDb:0.0} °C per dB of noise, the cheapest way to stay below {allowed:0} °C."
-            : $" to keep the {part} below {allowed:0} °C.";
+        string text = main.PerDb > 0.05
+            ? T($"The {part} is the limit ({temperature:0} of {allowed:0} °C). {main.Group.Name} runs at {main.Speed:0} %: it cools the {part} by about {main.PerDb:0.0} °C per dB of noise, the cheapest way to stay below {allowed:0} °C.")
+            : T($"The {part} is the limit ({temperature:0} of {allowed:0} °C). {main.Group.Name} runs at {main.Speed:0} % to keep the {part} below {allowed:0} °C.");
         if (reasons.Count > 1)
-            text += $" Also faster: {string.Join(", ", reasons.Skip(1).Select(r => $"{r.Group.Name} {r.Speed:0} %"))}.";
+            text += T($" Also faster: {string.Join(", ", reasons.Skip(1).Select(r => $"{r.Group.Name} {r.Speed:0} %"))}.");
         if (off.Count > 0)
-            text += $" Off: {string.Join(", ", off)}.";
+            text += T($" Off: {string.Join(", ", off)}.");
         return text;
     }
 

@@ -299,6 +299,15 @@
                     </Border>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
+                            <TextBlock Text="Fans" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12"
+                                       Text="How fast each fan turns at the same setting, against its first week. A worn bearing or dirt makes a fan slower, and often louder. Graphics card fans often hold their speed themselves, so their wear shows late." />
+                            <Grid x:Name="FanWearRows" />
+                            <local:HistoryChart x:Name="FanWearChart" Height="200" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
                             <TextBlock Text="Over time" Style="{StaticResource CardTitle}" />
                             <TextBlock x:Name="HealthChartIntro" Style="{StaticResource Caption}" Margin="0,2,0,10" />
                             <WrapPanel x:Name="HealthRangeButtons" />
@@ -562,6 +571,10 @@
                                 <ColumnDefinition />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <StackPanel Margin="0,0,16,0">
                                 <TextBlock Text="Appearance" Style="{StaticResource CardTitle}" />
                                 <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
@@ -571,6 +584,16 @@
                                 <ComboBoxItem Content="Like Windows" />
                                 <ComboBoxItem Content="Light" />
                                 <ComboBoxItem Content="Dark" />
+                            </ComboBox>
+                            <StackPanel Grid.Row="1" Margin="0,16,16,0">
+                                <TextBlock Text="Language" Style="{StaticResource CardTitle}" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                           Text="English or German. AutoFantic starts again to switch." />
+                            </StackPanel>
+                            <ComboBox x:Name="LanguageBox" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" MinWidth="160" Margin="0,16,0,0">
+                                <ComboBoxItem Content="Like Windows" />
+                                <ComboBoxItem Content="English" />
+                                <ComboBoxItem Content="Deutsch" />
                             </ComboBox>
                         </Grid>
                     </Border>
@@ -588,8 +611,9 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Developer" Style="{StaticResource CardTitle}" />
-                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,10"
                                        Text="For testing. Not needed for normal use." />
+                            <TextBlock x:Name="SelfUsageText" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,14" />
                             <WrapPanel>
                                 <Button x:Name="FindFansButton" Content="Find my fans again" Padding="16,9" Margin="0,0,10,10" />
                                 <Button x:Name="SensorsButton" Content="Show all sensors" Padding="16,9" Margin="0,0,10,10" />

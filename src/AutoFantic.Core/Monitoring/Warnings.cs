@@ -1,4 +1,5 @@
 using System.Text.Json;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Monitoring;
 
@@ -77,7 +78,11 @@ public sealed class WarningWatch
             if (Step(key, time, past, back, TimeSpan.FromSeconds(rule.Seconds)))
             {
                 string unit = series?.Unit ?? "";
-                warnings.Add($"{series?.Name ?? rule.Series} {(rule.Above ? "above" : "below")} {rule.Limit:0} {unit} for {rule.Seconds} s (now {value:0} {unit}).");
+                // a fan's name is the hardware's; CPU, GPU hotspot … are said in the chosen language
+                string name = series is null ? rule.Series : series.Kind is SeriesKind.FanPercent or SeriesKind.FanRpm ? series.Name : T(series.Name);
+                warnings.Add(rule.Above
+                    ? T($"{name} above {rule.Limit:0} {unit} for {rule.Seconds} s (now {value:0} {unit}).")
+                    : T($"{name} below {rule.Limit:0} {unit} for {rule.Seconds} s (now {value:0} {unit})."));
             }
         }
 
@@ -88,7 +93,7 @@ public sealed class WarningWatch
                 bool shouldTurn = fan.Percent is > 0;
                 bool standing = fan.Rpm is < StoppedBelowRpm;
                 if (Step($"stopped|{fan.Name}", time, shouldTurn && standing, !shouldTurn || fan.Rpm is >= StoppedBelowRpm, FanStoppedFor))
-                    warnings.Add($"{fan.Name} stands still although AutoFantic runs it at {fan.Percent:0} %: blocked, broken or unplugged?");
+                    warnings.Add(T($"{fan.Name} stands still although AutoFantic runs it at {fan.Percent:0} %: blocked, broken or unplugged?"));
             }
         }
         return warnings;

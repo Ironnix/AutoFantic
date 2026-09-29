@@ -1,4 +1,5 @@
 using AutoFantic.Core.Calibration;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Control;
 
@@ -153,14 +154,16 @@ public sealed class CurveController
                     _switches.Add(new FanSwitch(g, false,
                         temperature > offAt + Hysteresis ? $"{CalibrationInsights.Name(Warmer(group.Follows))} {temperature:0} °C"
                         : warm ? $"{CalibrationInsights.Name(Warmer(Component.Warmest))} {warmest:0} °C"
-                        : $"load came (CPU {cpuPower:0} W, GPU {gpuPower:0} W)"));
+                        : T($"load came (CPU {cpuPower:0} W, GPU {gpuPower:0} W)")));
                 }
             }
             else if (mayStop && temperature <= offAt && warmest <= OthersBelow && now - state.Since >= MinOn)
             {
                 state.Off = true;
                 state.Since = now;
-                _switches.Add(new FanSwitch(g, true, $"{(quietOff ? $"quiet ({Quiet})" : "idle")} and cool ({CalibrationInsights.Name(group.Follows)} {temperature:0} °C, CPU {cpuPower:0} W, GPU {gpuPower:0} W)"));
+                _switches.Add(new FanSwitch(g, true, quietOff
+                    ? T($"quiet ({T(Quiet!)}) and cool ({CalibrationInsights.Name(group.Follows)} {temperature:0} °C, CPU {cpuPower:0} W, GPU {gpuPower:0} W)")
+                    : T($"idle and cool ({CalibrationInsights.Name(group.Follows)} {temperature:0} °C, CPU {cpuPower:0} W, GPU {gpuPower:0} W)")));
             }
 
             double curve = Interpolate(group.Curve, temperature);

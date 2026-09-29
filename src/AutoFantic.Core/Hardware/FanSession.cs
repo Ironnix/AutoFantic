@@ -1,3 +1,5 @@
+using static AutoFantic.Core.Texts;
+
 namespace AutoFantic.Core.Hardware;
 
 /// <summary>
@@ -127,17 +129,17 @@ public abstract class FanSession : IDisposable
             var channel = Channels.FirstOrDefault(c => c.Id == id);
             if (channel is null)
             {
-                lines.Add($"{id}: not found");
+                lines.Add(T($"{id}: not found"));
                 continue;
             }
             try
             {
                 ForceRestore(channel);
-                lines.Add($"{channel.Name}: back to BIOS");
+                lines.Add(T($"{channel.Name}: back to BIOS"));
             }
             catch (Exception ex)
             {
-                lines.Add($"{channel.Name}: failed ({ex.Message})");
+                lines.Add(T($"{channel.Name}: failed ({ex.Message})"));
             }
         }
         return lines;

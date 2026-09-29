@@ -103,10 +103,10 @@ public static class CalibrationReport
     }
 
     public static string Role(CalibratedGroup g) =>
-        g.CpuEffect < 1 && g.GpuEffect < 1 ? "barely any effect"
-        : g.CpuEffect >= 2 * g.GpuEffect ? "cools the CPU"
-        : g.GpuEffect >= 2 * g.CpuEffect ? "cools the GPU"
-        : "case airflow, helps both";
+        g.CpuEffect < 1 && g.GpuEffect < 1 ? Texts.T("barely any effect")
+        : g.CpuEffect >= 2 * g.GpuEffect ? Texts.T("cools the CPU")
+        : g.GpuEffect >= 2 * g.CpuEffect ? Texts.T("cools the GPU")
+        : Texts.T("case airflow, helps both");
 
     private static string Short(FanGroup g) => g.IsGpu ? "GPU" : $"#{g.Headers[0].Channel}";
 
@@ -161,7 +161,7 @@ public static class CalibrationFiles
             if (imported.Runs.Count > 0)
             {
                 imported.Save(path);
-                log?.Invoke($"Imported the calibration of {old.Created:dd.MM. HH:mm} ({imported.Runs.Count} runs, half weight) as a starting point.");
+                log?.Invoke(Texts.T($"Imported the calibration of {old.Created:dd.MM. HH:mm} ({imported.Runs.Count} runs, half weight) as a starting point."));
                 return imported;
             }
         }

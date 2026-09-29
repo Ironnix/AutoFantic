@@ -1,6 +1,7 @@
-# A release: push a tag like v0.1.0 and this builds the exe, runs the tests and makes a DRAFT
-# pre-release on GitHub with that version's section of CHANGELOG.md as its text. Nothing is
-# public until the draft is published by hand on GitHub (Releases → the draft → Publish).
+# A release: push a tag like v0.1.0 and this builds the exe, runs the tests, signs the exes (once
+# SignPath is set up, see CODE_SIGNING.md) and makes a DRAFT pre-release on GitHub with that
+# version's section of CHANGELOG.md as its text. Nothing is public until the draft is published by
+# hand on GitHub (Releases → the draft → Publish).
 name: Release
 
 on:
@@ -16,6 +17,9 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    env:
+      # signing (SignPath, free for open source) runs only once this secret exists: see CODE_SIGNING.md
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,8 +49,45 @@ jobs:
       - name: Build
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          dotnet publish src/AutoFantic.App -c Release -o out -p:Version=$version
-          dotnet publish src/AutoFantic.Spike -c Release -o out -p:Version=$version
+          # the plain version in the exe (not "0.2.0+commit"): SignPath checks product name and version
+          dotnet publish src/AutoFantic.App -c Release -o out -p:Version=$version -p:IncludeSourceRevisionInInformationalVersion=false
+          dotnet publish src/AutoFantic.Spike -c Release -o out -p:Version=$version -p:IncludeSourceRevisionInInformationalVersion=false
+
+      # Signing: the two exes go to SignPath, come back signed and replace the unsigned ones.
+      # Without the SIGNPATH_API_TOKEN secret these steps are skipped and the release is unsigned.
+      - name: Upload the exes for signing
+        id: unsigned
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned
+          path: |
+            out/AutoFantic.exe
+            out/autofantic-spike.exe
+
+      - name: Sign (SignPath)
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: AutoFantic
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+          parameters: |
+            version: "${{ steps.version.outputs.version }}"
+
+      - name: Use the signed exes
+        if: env.SIGNPATH_API_TOKEN != ''
+        run: |
+          Copy-Item signed/AutoFantic.exe, signed/autofantic-spike.exe out/ -Force
+          foreach ($exe in "out/AutoFantic.exe", "out/autofantic-spike.exe") {
+            $signature = Get-AuthenticodeSignature $exe
+            if ($signature.Status -ne "Valid") { throw "$exe isn't signed: $($signature.StatusMessage)" }
+            "$exe signed by $($signature.SignerCertificate.Subject)"
+          }
 
       - name: Package
         run: |

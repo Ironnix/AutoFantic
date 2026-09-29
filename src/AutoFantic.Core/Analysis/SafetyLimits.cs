@@ -1,4 +1,5 @@
 using AutoFantic.Core.Hardware;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Analysis;
 
@@ -23,7 +24,7 @@ public sealed record SafetyLimits(
     }
 
     private static string? Over(string label, float? value, float max, float margin) =>
-        value is { } v && v >= max - margin ? $"{label} {v:0.0} °C ≥ limit {max:0} °C" : null;
+        value is { } v && v >= max - margin ? T($"{T(label)} {v:0.0} °C ≥ limit {max:0} °C") : null;
 }
 
 /// <summary>

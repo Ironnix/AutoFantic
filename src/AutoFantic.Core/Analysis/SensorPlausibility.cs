@@ -1,4 +1,5 @@
 using AutoFantic.Core.Hardware;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Analysis;
 
@@ -42,8 +43,8 @@ public sealed class SensorPlausibility(KeySensors keys)
             int bad = _badInARow[id] = _badInARow.GetValueOrDefault(id) + 1;
             if (bad >= ToleratedBadSamples)
                 return value is { } v
-                    ? $"{label} sensor reads {v:0.0} °C, which can't be right"
-                    : $"{label} sensor stopped reporting";
+                    ? T($"{T(label)} sensor reads {v:0.0} °C, which can't be right")
+                    : T($"{T(label)} sensor stopped reporting");
         }
         return null;
     }

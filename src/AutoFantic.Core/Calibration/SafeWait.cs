@@ -1,5 +1,6 @@
 using AutoFantic.Core.Analysis;
 using AutoFantic.Core.Hardware;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Calibration;
 
@@ -54,7 +55,7 @@ internal sealed class SafeWait(FanSession session, KeySensors keys, Cancellation
         {
             if (cancel.WaitHandle.WaitOne(tick))
             {
-                StopReason = "stopped";
+                StopReason = T("stopped");
                 return WaitEnd.Cancelled;
             }
 
@@ -81,7 +82,7 @@ internal sealed class SafeWait(FanSession session, KeySensors keys, Cancellation
 
     private void CoolDown()
     {
-        log?.Invoke($"{StopReason}: all fans to 100 % until it has cooled down …");
+        log?.Invoke(T($"{StopReason}: all fans to 100 % until it has cooled down …"));
         foreach (var channel in session.Channels)
         {
             try
@@ -102,7 +103,7 @@ internal sealed class SafeWait(FanSession session, KeySensors keys, Cancellation
             Last = session.Read();
             if (recovery.IsRecovered(Last))
             {
-                log?.Invoke($"cooled down after {(session.Now - started).TotalSeconds:0} s");
+                log?.Invoke(T($"cooled down after {(session.Now - started).TotalSeconds:0} s"));
                 break;
             }
         }

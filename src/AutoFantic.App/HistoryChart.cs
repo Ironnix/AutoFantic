@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using AutoFantic.Core;
 using AutoFantic.Core.Monitoring;
+using static AutoFantic.Core.Texts;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
@@ -70,7 +72,7 @@ internal sealed class HistoryChart : FrameworkElement
         var all = _lines.SelectMany(l => l.Points).ToList();
         if (all.Count == 0)
         {
-            var empty = Text("No data for this time yet.", text);
+            var empty = Text(T("No data for this time yet."), text);
             dc.DrawText(empty, new Point(plot.Left + (plot.Width - empty.Width) / 2, plot.Top + plot.Height / 2 - empty.Height / 2));
             return;
         }
@@ -90,7 +92,7 @@ internal sealed class HistoryChart : FrameworkElement
         for (double v = bottom; v <= top + step / 1000; v += step)
         {
             dc.DrawLine(grid, new Point(plot.Left, Y(v)), new Point(plot.Right, Y(v)));
-            Label(dc, $"{Value(v)} {_unit}", new Point(plot.Left - 6, Y(v)), text, right: true);
+            Label(dc, $"{Value(v)} {T(_unit)}", new Point(plot.Left - 6, Y(v)), text, right: true);
         }
         foreach (var (time, label) in TimeTicks())
         {
@@ -110,7 +112,7 @@ internal sealed class HistoryChart : FrameworkElement
         foreach (var line in _lines)
         {
             dc.DrawRoundedRectangle(new SolidColorBrush(SeriesColors.For(line.Color, this)), null, new Rect(legendX, 8, 12, 12), 3, 3);
-            string last = line.Points.Count > 0 ? $" {Value(line.Points[^1].Avg)} {_unit}" : "";
+            string last = line.Points.Count > 0 ? $" {Value(line.Points[^1].Avg)} {T(_unit)}" : "";
             var ft = Text(line.Name + last, primary);
             dc.DrawText(ft, new Point(legendX + 17, 14 - ft.Height / 2));
             legendX += 17 + ft.Width + 18;
@@ -188,7 +190,7 @@ internal sealed class HistoryChart : FrameworkElement
             if (Math.Abs((nearest.Time - time).TotalSeconds) > span / 50 + 10)
                 continue;
             var range = nearest.Max - nearest.Min > 0.5 ? Text($"{Value(nearest.Min)}–{Value(nearest.Max)}", secondary) : null;
-            rows.Add((SeriesColors.For(line.Color, this), Text(line.Name, primary), Text($"{Value(nearest.Avg)} {_unit}", primary, bold: true), range));
+            rows.Add((SeriesColors.For(line.Color, this), Text(line.Name, primary), Text($"{Value(nearest.Avg)} {T(_unit)}", primary, bold: true), range));
         }
         if (rows.Count == 0)
             return;
@@ -234,7 +236,7 @@ internal sealed class HistoryChart : FrameworkElement
             while ((month.Month - 1) % every != 0)
                 month = month.AddMonths(1);
             for (bool opening = true; month <= _to.LocalDateTime; month = month.AddMonths(every), opening = false)
-                yield return (new DateTimeOffset(month), month.ToString(opening || month.Month == 1 ? "MMM yyyy" : "MMM", CultureInfo.InvariantCulture));
+                yield return (new DateTimeOffset(month), month.ToString(opening || month.Month == 1 ? "MMM yyyy" : "MMM", Texts.Culture));
             yield break;
         }
         double[] steps = [60, 300, 600, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 7 * 86400, 14 * 86400];

@@ -4,6 +4,7 @@ using AutoFantic.Core;
 using AutoFantic.Core.Hardware;
 using AutoFantic.Core.Logging;
 using AutoFantic.Core.Simulation;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.App;
 
@@ -68,15 +69,16 @@ internal static class Watchdog
         string folder = DataFolder.Default(simulate);
         if (!Handback.AnyIn(folder))
             return 0; // it handed its fans back itself: the normal case
+        Program.UseLanguage(simulate); // for its lines in the log
 
         try
         {
             using FanSession session = simulate ? new SimulatedPc() : new HardwareSession();
-            Handback.RecoverIfNeeded(folder, session, new ActivityLog(folder), "the watchdog");
+            Handback.RecoverIfNeeded(folder, session, new ActivityLog(folder), T("the watchdog"));
         }
         catch (Exception ex)
         {
-            new ActivityLog(folder).Add(LogKind.Warning, $"The watchdog couldn't hand the fans back ({ex.Message}); AutoFantic tries again when it starts. A PC restart always does it.");
+            new ActivityLog(folder).Add(LogKind.Warning, T($"The watchdog couldn't hand the fans back ({ex.Message}); AutoFantic tries again when it starts. A PC restart always does it."));
         }
         return 0;
     }

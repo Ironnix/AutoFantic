@@ -1,5 +1,6 @@
 using System.Reflection;
 using LibreHardwareMonitor.Hardware;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Hardware;
 
@@ -75,7 +76,7 @@ public sealed class HardwareSession : FanSession
                 // a library update may have changed the chip's fields: the plain hand-back below still runs
             }
             if (!injected)
-                lines.Add($"{state.HardwareId}: couldn't restore the BIOS setup (restart the PC if a fan stays at one speed)");
+                lines.Add(T($"{state.HardwareId}: couldn't restore the BIOS setup (restart the PC if a fan stays at one speed)"));
         }
         lines.AddRange(base.HandBack(file));
         return lines;

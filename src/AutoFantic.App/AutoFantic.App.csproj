@@ -22,4 +22,9 @@
     <ProjectReference Include="..\AutoFantic.Core\AutoFantic.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- the German texts (see Texts.cs): English text → German text -->
+    <EmbeddedResource Include="Lang\*.json" />
+  </ItemGroup>
+
 </Project>

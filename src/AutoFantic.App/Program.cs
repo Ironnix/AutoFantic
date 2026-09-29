@@ -9,6 +9,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using AutoFantic.Core;
 using AutoFantic.Core.Logging;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.App;
 
@@ -37,8 +38,21 @@ internal static class Program
             return Watchdog.RunLauncher(args);
         if (args.Contains(Watchdog.Argument))
             return Watchdog.Run(args);
-        return RunApp(args);
+        try
+        {
+            return RunApp(args);
+        }
+        finally
+        {
+            // for developers: every text shown in German that has no translation yet
+            if (Environment.GetEnvironmentVariable("AUTOFANTIC_MISSING_TEXTS") is { Length: > 0 } missing)
+                File.WriteAllLines(missing, Texts.Missing.Order(StringComparer.Ordinal));
+        }
     }
+
+    /// <summary>The language chosen in Settings (or Windows'), before anything writes or shows a text.</summary>
+    internal static void UseLanguage(bool simulate) =>
+        Texts.Use(AppearanceSettings.Load(Path.Combine(DataFolder.Default(simulate), AppearanceSettings.FileName)).Language, typeof(Program).Assembly);
 
     // kept apart from Main, so the watchdog never loads WPF
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -52,6 +66,7 @@ internal static class Program
         // started by an update: the old version hands the fans back and ends first
         if (int.TryParse(Option(args, AppController.WaitForArgument), out int previous))
             WaitForExit(previous);
+        UseLanguage(simulate);
 
         if (!simulate && !IsAdministrator())
         {
@@ -69,7 +84,7 @@ internal static class Program
         // the version from before the rename controls the fans: two programs must never fight over them
         if (!simulate && DataFolder.LegacyBackgroundRunning())
         {
-            System.Windows.MessageBox.Show("The older \"AutoFanatic\" is still running and controls the fans.\n\nExit it first (right-click its icon next to the clock → Exit), then start AutoFantic again.",
+            System.Windows.MessageBox.Show(T("The older \"AutoFanatic\" is still running and controls the fans.\n\nExit it first (right-click its icon next to the clock → Exit), then start AutoFantic again."),
                 "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return 0;
         }
@@ -82,7 +97,7 @@ internal static class Program
         if (!first)
         {
             if (!quiet)
-                System.Windows.MessageBox.Show("AutoFantic is already running: look for its icon next to the clock.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show(T("AutoFantic is already running: look for its icon next to the clock."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return 0;
         }
 
@@ -104,7 +119,7 @@ internal static class Program
             if (Option(args, AppController.UpdatedFromArgument) is { } from)
             {
                 app.UpdatedFrom = from;
-                app.Log.Add(LogKind.Info, $"Updated from {from} to {AppVersion.Text}.");
+                app.Log.Add(LogKind.Info, T($"Updated from {from} to {AppVersion.Text}."));
             }
 
             // whatever happens, the fans go back to the BIOS
@@ -113,7 +128,7 @@ internal static class Program
             {
                 app.Loop.Dispose();
                 if (!quiet)
-                    System.Windows.MessageBox.Show($"AutoFantic stopped: {e.Exception.Message}\n\nThe fans are back on BIOS control.", "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBox.Show(T($"AutoFantic stopped: {e.Exception.Message}\n\nThe fans are back on BIOS control."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Error);
                 wpf.Shutdown(1);
                 e.Handled = true;
             };

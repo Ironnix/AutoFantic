@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using AutoFantic.Core;
 using AutoFantic.Core.Calibration;
 using Point = System.Windows.Point;
 using Pen = System.Windows.Media.Pen;
@@ -42,7 +43,7 @@ internal sealed class CurveEditor : FrameworkElement
 
     public Color Color { get; set; } = Color.FromRgb(0x2a, 0x78, 0xd6);
 
-    public string TemperatureLabel { get; set; } = "CPU temperature";
+    public string TemperatureLabel { get; set; } = Texts.T("CPU temperature");
 
     /// <summary>
     /// Where the fan is right now: the (smoothed) temperature it follows, its speed (0 = off; null =
@@ -135,7 +136,7 @@ internal sealed class CurveEditor : FrameworkElement
             dc.DrawRectangle(tint, null, band);
             // explained below the axis, like a legend, where it can't collide with the live label
             dc.DrawRectangle(tint, null, new Rect(plot.Left, plot.Bottom + 25, 14, 6));
-            Label(dc, $"off at idle up to {off:0} °C", new Point(plot.Left + 20, plot.Bottom + 28), text, HorizontalAlignment.Left, size: 11);
+            Label(dc, Texts.T($"off at idle up to {off:0} °C"), new Point(plot.Left + 20, plot.Bottom + 28), text, HorizontalAlignment.Left, size: 11);
         }
 
         // where the fan is now
@@ -146,14 +147,14 @@ internal sealed class CurveEditor : FrameworkElement
             dc.DrawLine(new Pen(faint, 1) { DashStyle = new DashStyle([2, 3], 0) }, new Point(at.X, plot.Bottom), at);
             dc.DrawEllipse(null, new Pen(strong, 2), at, 9, 9);
             dc.DrawEllipse(strong, null, at, 3, 3);
-            string now = live.Percent switch { null => "BIOS", 0 => "off", { } p => $"{p:0} %" };
+            string now = live.Percent switch { null => "BIOS", 0 => Texts.T("off"), { } p => $"{p:0} %" };
             // near the right edge the label goes to the left of the ring
             bool left = at.X > plot.Right - 190;
             var anchor = left ? HorizontalAlignment.Right : HorizontalAlignment.Left;
             double x = left ? at.X - 14 : at.X + 14;
             // at the bottom both lines go above the ring, clear of the axis
             bool low = percent < 12;
-            Label(dc, $"now {live.Temperature:0} °C · {now}", new Point(x, low ? at.Y - 34 : at.Y - 14), strong, anchor, size: 12, bold: true);
+            Label(dc, Texts.T($"now {live.Temperature:0} °C · {now}"), new Point(x, low ? at.Y - 34 : at.Y - 14), strong, anchor, size: 12, bold: true);
             if (live.Note is { } note)
                 Label(dc, note, new Point(x, low ? at.Y - 18 : at.Y + 2), text, anchor, size: 11);
         }

@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
+using static AutoFantic.Core.Texts;
 
 namespace AutoFantic.Core.Updates;
 
@@ -166,14 +167,14 @@ public static class UpdateInstaller
         if (actual != release.Sha256)
         {
             Directory.Delete(work, recursive: true);
-            throw new InvalidDataException("The download doesn't match GitHub's checksum (damaged or changed on the way). Nothing was changed; try again.");
+            throw new InvalidDataException(T("The download doesn't match GitHub's checksum (damaged or changed on the way). Nothing was changed; try again."));
         }
 
         string files = Path.Combine(work, "files");
         ZipFile.ExtractToDirectory(zip, files); // refuses entries that would land outside the folder
         File.Delete(zip);
         if (!File.Exists(Path.Combine(files, ExeName)))
-            throw new InvalidDataException($"The download has no {ExeName}. Nothing was changed.");
+            throw new InvalidDataException(T($"The download has no {ExeName}. Nothing was changed."));
         return files;
     }
 
