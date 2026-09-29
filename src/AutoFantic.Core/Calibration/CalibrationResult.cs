@@ -17,7 +17,8 @@ public sealed record CalibratedGroup(
     double CpuEffect,
     double GpuEffect,
     IReadOnlyList<CurvePoint> Curve,
-    IReadOnlyList<string> OffAt);
+    IReadOnlyList<string> OffAt,
+    bool Bios = false);
 
 /// <summary>One load level of the result table: the quietest mix found for it.</summary>
 public sealed record LoadRow(

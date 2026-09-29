@@ -72,4 +72,29 @@ public class CurveOverridesTests
             File.Delete(path);
         }
     }
+
+    [Fact]
+    public void A_fan_given_to_the_bios_keeps_its_curve_for_later_and_survives_a_round_trip()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"curves-{Guid.NewGuid():N}.json");
+        try
+        {
+            var own = new CurveOverride([new(45, 25), new(85, 100)], false);
+            var overrides = CurveOverrides.None.With(Calibration.Groups[0], own).WithBios(Calibration.Groups[0], true);
+            overrides.Save(path);
+            var loaded = CurveOverrides.Load(path);
+
+            var applied = loaded.ApplyTo(Calibration);
+            Assert.True(applied.Groups[0].Bios);
+            Assert.False(applied.Groups[1].Bios);
+            Assert.Equal(own.Curve, applied.Groups[0].Curve);                        // kept for when it comes back
+            Assert.True(loaded.Without(Calibration.Groups[0]).IsBios(Calibration.Groups[0])); // "Reset to recommended" leaves the BIOS choice
+            Assert.False(loaded.WithBios(Calibration.Groups[0], false).ApplyTo(Calibration).Groups[0].Bios);
+            Assert.False(CurveOverrides.Load(Path.Combine(Path.GetTempPath(), "none.json")).ApplyTo(Calibration).Groups[0].Bios);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

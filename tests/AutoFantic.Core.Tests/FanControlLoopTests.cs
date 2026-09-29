@@ -107,6 +107,55 @@ public class FanControlLoopTests
     }
 
     [Fact]
+    public void A_fan_given_to_the_bios_is_handed_back_and_left_alone_while_the_others_follow_their_curves()
+    {
+        var (pc, clock) = Pc(SimLoad.Game);
+        var calibration = Calibration(55, 45, 70);
+        using var loop = new FanControlLoop(pc, calibration, [30, 30, 40]);
+        Run(loop, clock, 3);
+        Assert.True(pc.Channels[1].IsSoftwareControlled);
+
+        // the case fans go to the BIOS: handed back right away, the others carry on
+        var overrides = CurveOverrides.None.WithBios(calibration.Groups[1], true);
+        loop.UseCalibration(overrides.ApplyTo(calibration), [30, 30, 40]);
+        var status = Run(loop, clock, 3);
+
+        Assert.False(pc.Channels[1].IsSoftwareControlled);
+        Assert.True(pc.Channels[0].IsSoftwareControlled);
+        Assert.Equal(55, pc.Channels[0].Percent);
+        var caseFans = status.Fans[1];
+        Assert.True(caseFans.Bios);
+        Assert.Null(caseFans.Percent);
+        Assert.Equal(pc.Channels[1].Percent, caseFans.BiosPercent); // what the BIOS runs it at, read back
+
+        // and back to AutoFantic
+        loop.UseCalibration(overrides.WithBios(calibration.Groups[1], false).ApplyTo(calibration), [30, 30, 40]);
+        Run(loop, clock, 3);
+        Assert.Equal(45, pc.Channels[1].Percent);
+    }
+
+    [Fact]
+    public void A_fan_given_to_the_bios_stays_with_it_even_at_a_safety_limit()
+    {
+        var (pc, clock) = Pc(new SimLoad(120, 320, 40, 99, "Game"));
+        var calibration = Calibration(60, 60, 30);
+        using var loop = new FanControlLoop(pc, CurveOverrides.None.WithBios(calibration.Groups[0], true).ApplyTo(calibration), [30, 30, 30]);
+
+        LoopStatus status;
+        int seconds = 0;
+        do
+        {
+            status = Run(loop, clock, 1);
+        }
+        while (status.State != LoopState.CoolingDown && ++seconds < 900);
+
+        Assert.Equal(LoopState.CoolingDown, status.State);
+        Assert.False(pc.Channels[0].IsSoftwareControlled); // the BIOS's own curve applies
+        Assert.Equal(100, pc.Channels[1].Percent);
+        Assert.Equal(100, pc.Channels[3].Percent);
+    }
+
+    [Fact]
     public void Without_a_calibration_the_bios_keeps_the_fans_until_the_first_one_is_done()
     {
         var (pc, clock) = Pc(SimLoad.Game);

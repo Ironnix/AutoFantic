@@ -111,8 +111,9 @@ public sealed class HistoryRecorder(HistoryStore store, KeySensors keys)
             {
                 var rpms = group.Headers.Select(h => (double?)snapshot.Value(h.RpmSensorId)).OfType<double>().ToList();
                 double? rpm = rpms.Count > 0 ? rpms.Average() : null;
-                double? percent = status.Fans.FirstOrDefault(f => f.Name == group.Name)?.Percent;
-                Add(percentSeries, percent);
+                var reading = status.Fans.FirstOrDefault(f => f.Name == group.Name);
+                double? percent = reading?.Percent;
+                Add(percentSeries, percent ?? reading?.BiosPercent); // a fan given to the BIOS: what the BIOS runs it at
                 Add(rpmSeries, rpm);
                 fans.Add(new FanSample(group.Name, percent, rpm));
             }

@@ -25,7 +25,12 @@ public enum LoopState
 
 /// <param name="Percent">Speed AutoFantic set; 0 = off; null = the BIOS is in control.</param>
 /// <param name="Status">While running by the curves: the temperature followed, the curve's speed there and why the fan differs from it.</param>
-public sealed record FanReading(string Name, double? Percent, FanStatus? Status = null);
+/// <param name="BiosPercent">For a fan the user gave to the BIOS: the speed the BIOS runs it at (read back), if the hardware says.</param>
+public sealed record FanReading(string Name, double? Percent, FanStatus? Status = null, double? BiosPercent = null)
+{
+    /// <summary>The user gave this fan to the BIOS (<see cref="CalibratedGroup.Bios"/>).</summary>
+    public bool Bios { get; init; }
+}
 
 public sealed record LoopStatus(
     DateTimeOffset Time,
@@ -163,16 +168,17 @@ public sealed class FanControlLoop : IDisposable
     public CalibrationResult? Calibration => _calibration;
 
     /// <summary>
-    /// Switches to other curves while running (another profile, a curve edited by hand). Takes
-    /// effect on the next step, starting right at the new curves.
+    /// Switches to other curves while running (another profile, a curve edited by hand, a fan
+    /// given to the BIOS or taken back). Takes effect on the next step, starting right at the new curves.
     /// </summary>
     public void UseCalibration(CalibrationResult calibration, IReadOnlyList<double> minSpinning, IReadOnlyList<bool>? canStop = null)
     {
         var channels = ChannelsFor(_session, calibration);
         lock (_lock)
         {
-            // a fan that is no longer in the new calibration goes back to the BIOS
-            foreach (var channel in _channels.SelectMany(c => c).Except(channels.SelectMany(c => c)))
+            // a fan AutoFantic drove that is no longer in the new calibration, or that the user gave to the BIOS, goes back to it
+            var drivenNow = Driven(calibration, channels).ToHashSet();
+            foreach (var channel in Driven(_calibration, _channels).Where(c => !drivenNow.Contains(c)).ToList())
                 _session.RestoreDefault(channel);
             _calibration = calibration;
             _channels = channels;
@@ -181,6 +187,10 @@ public sealed class FanControlLoop : IDisposable
                 State = LoopState.Running;
         }
     }
+
+    // the channels of every group AutoFantic drives (not the ones the user gave to the BIOS)
+    private static IEnumerable<FanChannel> Driven(CalibrationResult? calibration, List<List<FanChannel>> channels) =>
+        calibration is null ? [] : channels.Where((_, g) => !calibration.Groups[g].Bios).SelectMany(c => c);
 
     private static List<List<FanChannel>> ChannelsFor(FanSession session, CalibrationResult calibration) =>
         calibration.Groups
@@ -333,12 +343,14 @@ public sealed class FanControlLoop : IDisposable
                     }
                     Apply(_controller.Step(s.Time, temps, cpuW, gpuW), speeds);
                     status = _controller.Status;
-                    foreach (var change in _controller.Switches)
+                    foreach (var change in _controller.Switches.Where(c => !_calibration.Groups[c.Group].Bios))
                         _log.Add(LogKind.Fans, $"{_calibration.Groups[change.Group].Name} {(change.Off ? "off" : "on again")}: {change.Why}");
                 }
             }
 
-            var fans = _calibration is null ? [] : _calibration.Groups.Select((g, i) => new FanReading(g.Name, speeds[i], status?[i])).ToList();
+            var fans = _calibration is null ? [] : _calibration.Groups
+                .Select((g, i) => g.Bios ? new FanReading(g.Name, null, null, BiosSpeed(i)) { Bios = true } : new FanReading(g.Name, speeds[i], status?[i]))
+                .ToList();
             Last = new LoopStatus(s.Time, State, cpu, gpu, cpuW, gpuW, fans);
             // nothing going on: every 2 s is plenty (a game or a limit brings it back to every second)
             double cpuLoad = s.Value(_keys.CpuLoad) ?? 100, gpuLoad = s.Value(_keys.GpuLoad) ?? 100;
@@ -352,10 +364,19 @@ public sealed class FanControlLoop : IDisposable
     {
         for (int g = 0; g < _channels.Count; g++)
         {
+            if (_calibration!.Groups[g].Bios)
+                continue; // the user gave it to the BIOS: left alone, also at a safety limit (the BIOS's own curve applies)
             foreach (var channel in _channels[g])
                 _session.SetPercent(channel, (float)percent[g]);
             applied[g] = percent[g];
         }
+    }
+
+    // what the BIOS runs a group at: its channels' duty as read back from the hardware
+    private double? BiosSpeed(int group)
+    {
+        var read = _channels[group].Select(c => c.Percent).OfType<float>().ToList();
+        return read.Count > 0 ? read.Average() : null;
     }
 
     /// <summary>Stops the loop and hands every fan back to the BIOS. Safe to call more than once (exit, crash, logoff).</summary>

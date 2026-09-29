@@ -54,7 +54,11 @@ public static class CoolingHealth
     /// <summary>One minute of history: temperatures, power, and each calibrated group's fan speed (0 = off).</summary>
     public sealed record Minute(double CpuTemp, double GpuTemp, double CpuPower, double GpuPower, IReadOnlyList<double> Speeds);
 
-    /// <summary>The steady minutes between two times, from the history: only minutes where AutoFantic drove every fan and the power stayed about the same.</summary>
+    /// <summary>
+    /// The steady minutes between two times, from the history: only minutes where every fan's speed
+    /// is known (set by AutoFantic, or read back from a fan the user gave to the BIOS) and the power
+    /// stayed about the same.
+    /// </summary>
     public static IReadOnlyList<Minute> Minutes(HistoryStore store, CalibrationResult calibration, DateTimeOffset from, DateTimeOffset to)
     {
         int count = (int)Math.Max(1, (to - from).TotalMinutes) + 2;
