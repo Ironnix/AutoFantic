@@ -26,9 +26,11 @@ internal sealed class AppController : IDisposable
     private string? _quietReason;
     private System.Threading.Timer? _healthTimer, _updateTimer;
     private Version? _loggedUpdate;
+    private readonly bool _pawnIoAtStart;
 
-    private AppController(FanSession session, FanControlLoop loop, string runs, ActivityLog log, HistoryRecorder monitor, FanInventory? inventory, CalibrationResult? recommended, CurveOverrides overrides)
+    private AppController(FanSession session, FanControlLoop loop, string runs, ActivityLog log, HistoryRecorder monitor, FanInventory? inventory, CalibrationResult? recommended, CurveOverrides overrides, bool pawnIoAtStart)
     {
+        _pawnIoAtStart = pawnIoAtStart;
         Session = session;
         Loop = loop;
         RunsPath = runs;
@@ -159,6 +161,8 @@ internal sealed class AppController : IDisposable
         string runs = DataFolder.Default(simulate);
         var log = new ActivityLog(runs);
 
+        // the hardware is opened once: a driver installed later takes a restart of AutoFantic
+        bool pawnIo = simulate || SystemCheck.PawnIoInstalled();
         FanSession session;
         try
         {
@@ -176,6 +180,12 @@ internal sealed class AppController : IDisposable
         session.HandbackPath = Handback.PathIn(runs);
 
         var inventory = FanInventory.Load(Path.Combine(runs, CalibrationFiles.Inventory));
+        if (inventory?.Fits(session.Channels) == false)
+        {
+            // e.g. found without the PawnIO driver (no mainboard outputs yet), or a graphics card or water cooler swapped
+            log.Add(LogKind.Warning, T("The PC's fan outputs are not the ones found before (a driver, a graphics card or a water cooler changed): find the fans and calibrate again. Until then the BIOS controls the fans."));
+            inventory = null;
+        }
         var calibration = inventory is null ? null : CalibrationResult.Load(Path.Combine(runs, CalibrationFiles.Result));
         var overrides = CurveOverrides.Load(Path.Combine(runs, CalibrationFiles.Curves));
 
@@ -196,7 +206,7 @@ internal sealed class AppController : IDisposable
         }
 
         problem = null;
-        var app = new AppController(session, loop, runs, log, OpenMonitor(runs, loop, log), inventory, calibration, overrides)
+        var app = new AppController(session, loop, runs, log, OpenMonitor(runs, loop, log), inventory, calibration, overrides, pawnIo)
         {
             UnexpectedEnd = LastRunEndedBadly(log),
         };
@@ -597,7 +607,46 @@ internal sealed class AppController : IDisposable
 
     /// <summary>Runs the start-up checks again (after installing a driver, closing another fan program).</summary>
     public void RefreshChecks() =>
-        Checks = SystemCheck.Run(Session, Loop.Keys, Session is SimulatedPc || SystemCheck.PawnIoInstalled(), FanToolCheck.Running());
+        Checks = SystemCheck.Run(Session, Loop.Keys,
+            _pawnIoAtStart ? PawnIo.Installed : SystemCheck.PawnIoInstalled() ? PawnIo.InstalledSinceStart : PawnIo.Missing, FanToolCheck.Running());
+
+    /// <summary>
+    /// Installs the PawnIO driver after the user said yes: downloads its official installer, checks
+    /// it and runs it without a window. Afterwards AutoFantic has to start again to use the driver
+    /// (<see cref="StartAgain"/>). True if Windows wants a restart of the PC first; throws with the
+    /// reason if it didn't work.
+    /// </summary>
+    public async Task<bool> InstallPawnIoAsync()
+    {
+        string work = Path.Combine(RunsPath, "pawnio");
+        Log.Add(LogKind.Info, T($"Installing the PawnIO driver {PawnIoSetup.Version}: downloading it from GitHub …"));
+        try
+        {
+            string installer = await PawnIoSetup.DownloadAsync(work);
+            bool restartPc = await PawnIoSetup.RunAsync(installer);
+            Log.Add(LogKind.Info, restartPc
+                ? T("The PawnIO driver is installed. Windows wants a restart of the PC to finish it.")
+                : T("The PawnIO driver is installed. AutoFantic starts again to use it."));
+            return restartPc;
+        }
+        catch (Exception ex)
+        {
+            Log.Add(LogKind.Warning, T($"The PawnIO driver couldn't be installed: {ex.Message}"));
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(work))
+                    Directory.Delete(work, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // the installer is still in use for a moment: it stays until the next install
+            }
+        }
+    }
 
     // ── curves and presets ─────────────────────────────────────────────────────────────
 

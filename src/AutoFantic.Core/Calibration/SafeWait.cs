@@ -39,11 +39,15 @@ internal sealed class SafeWait(FanSession session, KeySensors keys, Cancellation
     /// <summary>Why the last wait ended early, in plain words.</summary>
     public string? StopReason { get; private set; }
 
-    /// <summary>Checks the limits once without waiting; false (with <see cref="StopReason"/>) if it's already too hot.</summary>
+    /// <summary>
+    /// Checks once without waiting; false (with <see cref="StopReason"/>) if it's already too hot, or
+    /// the CPU temperature can't be read: nothing that changes fans starts without it.
+    /// </summary>
     public bool CheckNow()
     {
         Last = session.Read();
-        StopReason = _limits.Check(Last, keys) ?? _plausibility.Check(Last);
+        StopReason = _limits.Check(Last, keys) ?? _plausibility.Check(Last)
+            ?? (SensorPlausibility.IsPlausible(Last.Value(keys.CpuTemp)) ? null : T("the CPU temperature can't be read"));
         return StopReason is null;
     }
 

@@ -237,5 +237,11 @@
   "built-in load ({0})": "eingebaute Last ({0})",
   "CPU on all cores + {0}": "CPU auf allen Kernen + {0}",
   "simulated CPU + GPU load": "simulierte CPU- und GPU-Last",
-  "{0:dd.MM. HH:mm} · {1} · {2} runs": "{0:dd.MM. HH:mm} · {1} · {2} Messungen"
+  "{0:dd.MM. HH:mm} · {1} · {2} runs": "{0:dd.MM. HH:mm} · {1} · {2} Messungen",
+  "Restart AutoFantic": "AutoFantic neu starten",
+  "Install PawnIO": "PawnIO installieren",
+  "Installing PawnIO …": "PawnIO wird installiert …",
+  "AutoFantic needs the PawnIO driver to reach the mainboard's fans and to read the CPU temperature. It isn't installed on this PC.\n\nInstall it now? AutoFantic downloads it from PawnIO's page on GitHub (3 MB), installs it and starts again.": "AutoFantic braucht den PawnIO-Treiber, um die Lüfter am Mainboard zu erreichen und die CPU-Temperatur zu lesen. Er ist auf diesem PC nicht installiert.\n\nJetzt installieren? AutoFantic lädt ihn von PawnIOs Seite auf GitHub (3 MB), installiert ihn und startet neu.",
+  "The PawnIO driver is installed. Windows wants a restart of the PC to finish it: restart the PC, then start AutoFantic again.": "Der PawnIO-Treiber ist installiert. Windows möchte den PC neu starten, um es abzuschließen: Starte den PC neu und dann AutoFantic.",
+  "The PawnIO driver couldn't be installed: {0}\n\nOpen its download page to install it yourself?": "Der PawnIO-Treiber konnte nicht installiert werden: {0}\n\nDie Download-Seite öffnen, um ihn selbst zu installieren?"
 }

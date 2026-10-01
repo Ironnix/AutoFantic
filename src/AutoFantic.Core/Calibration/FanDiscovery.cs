@@ -23,7 +23,7 @@ public static class FanDiscovery
 
     /// <summary>About how long it takes, for the UI.</summary>
     public static TimeSpan Duration(FanSession session) =>
-        TimeSpan.FromSeconds(session.Channels.Count * (Steps.Length + 1) * Settle.TotalSeconds / session.TimeScale);
+        TimeSpan.FromSeconds(session.Channels.Count(c => !c.IsCoolerPump) * (Steps.Length + 1) * Settle.TotalSeconds / session.TimeScale);
 
     /// <summary>Runs the test. Null if it had to stop (Ctrl+C, too hot, sensor problem); the reason goes to <paramref name="log"/>.</summary>
     /// <param name="progress">Called with the channel being tested and the share done (0–1).</param>
@@ -44,6 +44,13 @@ public static class FanDiscovery
         {
             var channel = channels[c];
             progress?.Invoke(channel, (double)c / channels.Count);
+            if (channel.IsCoolerPump)
+            {
+                // a water cooler's own pump: not even run through the speeds, its controller keeps it
+                headers.Add(new FanHeader(channel.Index, channel.Id, channel.Name, channel.Hardware, null, [], IsPump: true));
+                log?.Invoke(T($"{channel}: a water cooler's pump, left alone"));
+                continue;
+            }
             var measured = new List<(float Percent, Snapshot Snapshot)>();
             try
             {

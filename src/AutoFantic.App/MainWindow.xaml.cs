@@ -92,6 +92,10 @@ public partial class MainWindow : Window
     private string? _updating;
     private int _selected;
     private bool _building;
+    private bool _installingPawnIo;
+
+    // asked once per start, not every time the window opens
+    private static bool _pawnIoOffered;
 
     internal MainWindow(AppController app)
     {
@@ -271,6 +275,7 @@ public partial class MainWindow : Window
         };
         _timer.Start();
         UpdateLive();
+        ContentRendered += (_, _) => OfferPawnIo();
     }
 
     /// <summary>"overview", "monitor", "curves", "reports", "health", "calibration", "log" or "settings".</summary>
@@ -681,8 +686,71 @@ public partial class MainWindow : Window
         var text = new StackPanel();
         text.Children.Add(new TextBlock { Text = check.Title, FontSize = 14 });
         text.Children.Add(new TextBlock { Text = check.Detail, Style = (Style)FindResource("Caption") });
+        if (check.Fix != CheckFix.None)
+        {
+            bool pawnIo = check.Fix == CheckFix.GetPawnIo;
+            var fix = new Button
+            {
+                Content = !pawnIo ? T("Restart AutoFantic") : _installingPawnIo ? T("Installing PawnIO …") : T("Install PawnIO"),
+                IsEnabled = !(pawnIo && _installingPawnIo),
+                Padding = new Thickness(14, 6, 14, 6),
+                Margin = new Thickness(0, 8, 0, 0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            fix.Click += (_, _) =>
+            {
+                if (pawnIo)
+                {
+                    InstallPawnIo();
+                    return;
+                }
+                _app.StartAgain("--open");
+                System.Windows.Application.Current.Shutdown();
+            };
+            text.Children.Add(fix);
+        }
         Place(row, text, 1);
         return row;
+    }
+
+    /// <summary>
+    /// The first time the window shows while the PawnIO driver is missing: one question, so nobody
+    /// has to find the driver's installer. It's a driver, so it's never installed without a yes.
+    /// </summary>
+    private void OfferPawnIo()
+    {
+        if (_pawnIoOffered || !_app.Checks.Any(c => c.Fix == CheckFix.GetPawnIo))
+            return;
+        _pawnIoOffered = true;
+        if (MessageBox.Show(this, T("AutoFantic needs the PawnIO driver to reach the mainboard's fans and to read the CPU temperature. It isn't installed on this PC.\n\nInstall it now? AutoFantic downloads it from PawnIO's page on GitHub (3 MB), installs it and starts again."),
+                "AutoFantic", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            InstallPawnIo();
+    }
+
+    /// <summary>Installs the PawnIO driver (the user clicked or said yes) and starts AutoFantic again to use it.</summary>
+    private async void InstallPawnIo()
+    {
+        if (_installingPawnIo)
+            return;
+        _installingPawnIo = true;
+        BuildChecks(); // the button says "Installing …"
+        try
+        {
+            if (!await _app.InstallPawnIoAsync())
+            {
+                _app.StartAgain("--open");
+                System.Windows.Application.Current.Shutdown();
+                return;
+            }
+            MessageBox.Show(this, T("The PawnIO driver is installed. Windows wants a restart of the PC to finish it: restart the PC, then start AutoFantic again."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            if (MessageBox.Show(this, T($"The PawnIO driver couldn't be installed: {ex.Message}\n\nOpen its download page to install it yourself?"), "AutoFantic", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+                OpenInExplorer(SystemCheck.PawnIoUrl);
+        }
+        _installingPawnIo = false;
+        Recheck();
     }
 
     private void OnCalibrationProgress(CalibrationProgress p) => Dispatcher.BeginInvoke(() =>

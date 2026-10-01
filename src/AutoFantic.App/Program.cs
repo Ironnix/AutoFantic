@@ -97,7 +97,9 @@ internal static class Program
         if (!first)
         {
             if (!quiet)
-                System.Windows.MessageBox.Show(T("AutoFantic is already running: look for its icon next to the clock."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show(!simulate && RunningCopy() is { } other
+                    ? T($"Another copy of AutoFantic is already running:\n{other}\n\nExit it first (right-click its icon next to the clock → Exit), then start this one again.")
+                    : T("AutoFantic is already running: look for its icon next to the clock."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return 0;
         }
 
@@ -143,6 +145,8 @@ internal static class Program
             Watchdog.Launch(simulate);
             if (!quiet)
                 app.StartUpdateChecks();
+            if (!quiet && !simulate)
+                FollowAutostart(app);
 
             using var tray = new TrayIcon(app, quiet: selfTest);
             if (args.Contains("--selftest-calibration"))
@@ -247,6 +251,54 @@ internal static class Program
             action();
         };
         timer.Start();
+    }
+
+    /// <summary>
+    /// "Start with Windows" follows the copy that is started: if the task still starts another one
+    /// (an older copy left in another folder), that one would come back at every logon. Not for a
+    /// copy that won't stay: a dev build ("0.1.9-dev"), the compiler's output, or one started
+    /// straight out of the zip (Windows unpacks that into the temp folder). In the background:
+    /// asking the Task Scheduler takes a moment.
+    /// </summary>
+    private static void FollowAutostart(AppController app)
+    {
+        if (AppVersion.Text.Contains('-') || !Core.Updates.UpdateInstaller.CanInstallInto(AppContext.BaseDirectory)
+            || Environment.ProcessPath!.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase))
+            return;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                if (Autostart.FollowThisCopy() is { } before)
+                    app.Log.Add(LogKind.Info, T($"\"Start with Windows\" started another copy ({before}). From now on it starts this one ({Environment.ProcessPath})."));
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+            {
+                // the Task Scheduler can't be asked: Settings still says which copy starts
+            }
+        });
+    }
+
+    /// <summary>The exe of the AutoFantic that is already running, if it's another copy than this one; null if it's this one, or can't be told.</summary>
+    private static string? RunningCopy()
+    {
+        foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(Environment.ProcessPath!)))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.Id != Environment.ProcessId && process.MainModule?.FileName is { } exe
+                        && !string.Equals(exe, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase))
+                        return exe;
+                }
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+                {
+                    // it ended just now, or Windows doesn't say where it runs from
+                }
+            }
+        }
+        return null;
     }
 
     /// <summary>Waits (at most a minute) until the process with that id has ended.</summary>

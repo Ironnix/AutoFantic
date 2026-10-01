@@ -34,6 +34,13 @@ internal static class Autostart
     public static string? OtherCopy() =>
         Target() is { } target && !string.Equals(Path.GetFullPath(target), Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) ? target : null;
 
+    /// <summary>
+    /// Makes the task start this copy if it starts another one (an older copy left somewhere else:
+    /// that one would come back at every logon and never get this copy's updates). Returns the copy
+    /// it started before; null if nothing had to change (or the task couldn't be changed).
+    /// </summary>
+    public static string? FollowThisCopy() => OtherCopy() is { } other && Enable() ? other : null;
+
     /// <summary>Removes the "AutoFanatic" task from before the rename, if it's still there.</summary>
     public static void RemoveLegacy()
     {

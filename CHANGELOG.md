@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.9] - 01.10.2026
+
+### New
+
+- **AutoFantic installs the PawnIO driver for you.** If it's missing, the window asks once at the start (and the check has an *Install PawnIO* button). On yes it downloads PawnIO's official installer from its GitHub release, checks it against a fixed checksum, installs it without another prompt and starts again. Nothing is installed without your yes.
+
+### Fixed
+
+- **No mainboard fans and CPU at 0 °C without the PawnIO driver:** the set-up check passed anyway when the PC had a water cooler with its own controller (its pump counted as a "mainboard fan"), and a CPU that read 0 °C counted as found. Now the check says that the PawnIO driver is missing and offers to install it.
+- **Nothing starts without a CPU temperature:** *Find my fans* and the calibration don't start while the CPU temperature can't be read, and the fan control hands the fans to the BIOS instead of taking 0 °C for a cool CPU.
+- **A water cooler's own pump is left alone** (NZXT Kraken "Pump Control", Aquacomputer): it isn't run through the speeds and never gets a curve. A mainboard header that is only named "Pump Fan" is still found by how its fan turns.
+- **The fans are found again when the outputs changed**, for example after installing the PawnIO driver (the mainboard's outputs appear) or swapping the graphics card. Until then the BIOS keeps the fans.
+- **An old version came back after a restart:** *Start with Windows* kept starting another copy of AutoFantic in another folder. Now it follows the copy you start, and says so in the Activity log. If the other copy is already running, the message names its folder.
+
 ## [0.1.8] - 29.09.2026
 
 ### New

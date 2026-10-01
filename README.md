@@ -31,7 +31,7 @@
 ## Requirements
 
 * Windows 10 or 11 (64-bit), with admin rights (the fan chip driver needs them).
-* A mainboard whose fan chip [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) supports, and its **PawnIO** driver (see Troubleshooting). AutoFantic checks both when it starts.
+* A mainboard whose fan chip [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) supports, and the **PawnIO** driver for it. AutoFantic checks both when it starts, and installs the driver for you if you say yes.
 * An NVIDIA or AMD graphics card, if you want its fans controlled too.
 * Tested on: AMD Ryzen 7 9800X3D (air cooler), NVIDIA RTX 3080, MSI mainboard with a Nuvoton NCT6686D fan chip.
 
@@ -79,7 +79,7 @@ Everything is in `%LocalAppData%\AutoFantic` as plain files (not uploaded): `fan
 
 ## Privacy
 
-**Nothing is uploaded.** Your data stays in the folder above. The only connection AutoFantic makes is the **update check**: at every start and once a day it asks GitHub's public API for the list of AutoFantic releases. GitHub sees your IP address and "AutoFantic/<version>", nothing about your PC, fans or measurements. Switch it off in *Settings → Updates → Check by itself*. A new version is downloaded only when you click *Update*.
+**Nothing is uploaded.** Your data stays in the folder above. The only connection AutoFantic makes is the **update check**: at every start and once a day it asks GitHub's public API for the list of AutoFantic releases. GitHub sees your IP address and "AutoFantic/<version>", nothing about your PC, fans or measurements. Switch it off in *Settings → Updates → Check by itself*. A new version is downloaded only when you click *Update*, and the PawnIO driver's installer (from PawnIO's own releases on GitHub) only when you say yes to *Install PawnIO*.
 
 ## Uninstall
 
@@ -87,7 +87,7 @@ Everything is in `%LocalAppData%\AutoFantic` as plain files (not uploaded): `fan
 2. If *Start with Windows* is on: switch it off first (*Settings*), or delete the task "AutoFantic" in the Task Scheduler.
 3. Delete AutoFantic's folder (where you unpacked it) and its data, `%LocalAppData%\AutoFantic`.
 
-AutoFantic installs no service and no driver of its own (the PawnIO driver is separate; uninstall it in *Apps* if nothing else needs it).
+AutoFantic installs no service and has no driver of its own. The PawnIO driver is a separate program, whether AutoFantic installed it for you or you did: uninstall it in *Apps* if nothing else needs it.
 
 ## Roadmap
 
@@ -151,7 +151,8 @@ Run in a terminal **as administrator**: `publish\autofantic-spike.exe <command>`
 ## Troubleshooting
 
 * **"needs admin rights":** start it with "Run as administrator" (`Start-Dev-Build.cmd` and the exe ask by themselves).
-* **No mainboard fans found** (the set-up check says so): current LibreHardwareMonitor versions use the **PawnIO** driver. Install it from [pawnio.eu](https://pawnio.eu), or run the LibreHardwareMonitor app once (it offers to install it), then start AutoFantic again. If your fan chip still doesn't show up, it isn't supported yet.
+* **No mainboard fans found, or the CPU shows 0 °C** (the set-up check says so): both are read through the **PawnIO** driver. AutoFantic asks whether it should install it (or click *Install PawnIO* next to the check): it downloads PawnIO's official installer, checks it, installs it and starts again. If that doesn't work, install it yourself from [pawnio.eu](https://pawnio.eu) and start AutoFantic again. If your fan chip still doesn't show up, it isn't supported yet: *Settings → Developer → Show all sensors* writes a list you can attach to a GitHub issue.
+* **It starts an old version after a restart:** there is a second copy of AutoFantic in another folder, and *Start with Windows* still starts that one. Exit it and start the copy you want: from 0.1.9 on, *Start with Windows* follows the copy you start.
 * **Fans jump around or ignore the speed:** another fan tool (the mainboard's own app, Fan Control, Argus Monitor …) is still controlling them. The check on the Overview names the ones it knows. Close it or switch its fan control off.
 * **GPU fans never switch off at idle:** check the GPU's idle power on the Overview. Many cards draw 100 W or more at "idle" with several or high-refresh monitors, and then they get too warm without their fans.
 * **Something happened and you don't know why:** the *Activity* page (and `activity.log` in the data folder) lists every safety stop, sensor problem and fan switching off or on.

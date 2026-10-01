@@ -98,5 +98,12 @@
   "rpm": "U/min",
   "5 min ago": "vor 5 min",
   "now": "jetzt",
-  "U/min": "U/min"
+  "U/min": "U/min",
+  "The PC's fan outputs are not the ones found before (a driver, a graphics card or a water cooler changed): find the fans and calibrate again. Until then the BIOS controls the fans.": "Die Lüfteranschlüsse des PCs sind nicht mehr die zuvor gefundenen (ein Treiber, eine Grafikkarte oder eine Wasserkühlung hat sich geändert): Such die Lüfter noch einmal und kalibriere neu. Bis dahin steuert das BIOS die Lüfter.",
+  "Another copy of AutoFantic is already running:\n{0}\n\nExit it first (right-click its icon next to the clock → Exit), then start this one again.": "Eine andere Kopie von AutoFantic läuft bereits:\n{0}\n\nBeende sie zuerst (Rechtsklick auf ihr Symbol neben der Uhr → Beenden), dann starte diese hier noch einmal.",
+  "\"Start with Windows\" started another copy ({0}). From now on it starts this one ({1}).": "„Mit Windows starten“ hat eine andere Kopie gestartet ({0}). Ab jetzt startet es diese hier ({1}).",
+  "Installing the PawnIO driver {0}: downloading it from GitHub …": "PawnIO-Treiber {0} wird installiert: Download von GitHub …",
+  "The PawnIO driver is installed. Windows wants a restart of the PC to finish it.": "Der PawnIO-Treiber ist installiert. Windows möchte den PC neu starten, um es abzuschließen.",
+  "The PawnIO driver is installed. AutoFantic starts again to use it.": "Der PawnIO-Treiber ist installiert. AutoFantic startet neu, um ihn zu nutzen.",
+  "The PawnIO driver couldn't be installed: {0}": "Der PawnIO-Treiber konnte nicht installiert werden: {0}"
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AutoFantic.Core.Hardware;
 
 namespace AutoFantic.Core.Calibration;
 
@@ -24,7 +25,7 @@ public sealed record FanHeader(
 
     public bool Connected => RpmSensorId is not null;
 
-    public bool IsGpu => ControlId.Contains("gpu", StringComparison.OrdinalIgnoreCase);
+    public bool IsGpu => FanChannel.IsGpuId(ControlId);
 
     /// <summary>True if the fan stood still at a measured speed (a GPU in 0-RPM mode, or a fan that stops at 0 %).</summary>
     public bool CanStop => Rpm.Any(p => p.Rpm < StoppedBelowRpm);
@@ -120,6 +121,15 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
         }
         return groups;
     }
+
+    /// <summary>
+    /// True if these are still the PC's fan outputs. They change when the PawnIO driver is installed
+    /// (the mainboard's outputs appear) or a graphics card or water cooler is swapped. An inventory
+    /// from before a water cooler's pump was left alone doesn't fit either. Then the fans have to be found again.
+    /// </summary>
+    public bool Fits(IReadOnlyList<FanChannel> channels) =>
+        Headers.Select(h => h.ControlId).ToHashSet().SetEquals(channels.Select(c => c.Id))
+        && Headers.All(h => h.IsPump || !FanChannel.IsCoolerPumpOutput(h.ControlId, h.Name));
 
     public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
 

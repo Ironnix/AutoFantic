@@ -9,7 +9,9 @@ namespace AutoFantic.Core.Analysis;
 /// otherwise look like "everything fine" while a fan sits at a low speed.
 ///
 /// Only sensors that read plausibly on the first check are watched, so a sensor that never
-/// existed on this PC doesn't block anything. A few bad samples in a row are tolerated, because a
+/// existed on this PC doesn't block anything. The CPU temperature is the exception: every PC has
+/// one, and a CPU that reads 0 °C from the start (the PawnIO driver missing or not loading) must
+/// not pass for a cool one. A few bad samples in a row are tolerated, because a
 /// single failed read happens now and then. A frozen value is not treated as an error: the GPU
 /// core reports whole degrees and can honestly sit on one value for minutes under steady load.
 /// </summary>
@@ -28,7 +30,7 @@ public sealed class SensorPlausibility(KeySensors keys)
     public string? Check(Snapshot snapshot)
     {
         _watched ??= Candidates()
-            .Where(c => IsPlausible(snapshot.Value(c.Id)))
+            .Where(c => c.Id == keys.CpuTemp || IsPlausible(snapshot.Value(c.Id)))
             .ToList();
 
         foreach (var (label, id) in _watched)
@@ -61,6 +63,7 @@ public sealed class SensorPlausibility(KeySensors keys)
             yield return ("GPU memory", mem);
     }
 
-    private static bool IsPlausible(float? value) =>
+    /// <summary>A temperature a working sensor can report: not missing, not 0, not far beyond any real value.</summary>
+    public static bool IsPlausible(float? value) =>
         value is { } v && float.IsFinite(v) && v >= MinPlausible && v <= MaxPlausible;
 }

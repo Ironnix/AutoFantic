@@ -72,7 +72,7 @@
   "Mainboard fans": "Mainboard-Lüfter",
   "{0} outputs on {1}.": "{0} Anschlüsse an {1}.",
   "None found: this mainboard's fan chip isn't supported yet.": "Keine gefunden: Der Lüfterchip dieses Mainboards wird noch nicht unterstützt.",
-  "The PawnIO driver is missing. Install it from {0}, then restart AutoFantic.": "Der PawnIO-Treiber fehlt. Installiere ihn von {0} und starte AutoFantic dann neu.",
+  "The PawnIO driver is missing: without it AutoFantic can't reach the mainboard's fans. AutoFantic's window installs it for you (Install PawnIO), or get it from {0}.": "Der PawnIO-Treiber fehlt: Ohne ihn erreicht AutoFantic die Lüfter am Mainboard nicht. Das AutoFantic-Fenster installiert ihn für dich (PawnIO installieren), oder du holst ihn von {0}.",
   "Graphics card fans": "Grafikkarten-Lüfter",
   "{0} output on {1}.": "{0} Anschluss an {1}.",
   "None found: the card keeps its own fan curve.": "Keine gefunden: Die Karte behält ihre eigene Lüfterkurve.",
@@ -117,5 +117,16 @@
   "{0} {1:0.0} °C ≥ limit {2:0} °C": "{0} {1:0.0} °C ≥ Grenze {2:0} °C",
   "GPU core": "GPU-Kern",
   "{0} sensor reads {1:0.0} °C, which can't be right": "{0}-Sensor zeigt {1:0.0} °C, das kann nicht stimmen",
-  "{0} sensor stopped reporting": "{0}-Sensor meldet nichts mehr"
+  "{0} sensor stopped reporting": "{0}-Sensor meldet nichts mehr",
+  "The PawnIO driver is installed now: restart AutoFantic to use it.": "Der PawnIO-Treiber ist jetzt installiert: Starte AutoFantic neu, damit es ihn nutzt.",
+  "The CPU temperature can't be read without the PawnIO driver.": "Ohne den PawnIO-Treiber kann die CPU-Temperatur nicht gelesen werden.",
+  "The CPU temperature can't be read until AutoFantic is restarted.": "Die CPU-Temperatur kann erst nach einem Neustart von AutoFantic gelesen werden.",
+  "The CPU temperature can't be read (its sensor shows nothing sensible). Restart the PC; if it stays like this, this CPU isn't supported yet.": "Die CPU-Temperatur kann nicht gelesen werden (ihr Sensor zeigt nichts Sinnvolles). Starte den PC neu; bleibt es so, wird diese CPU noch nicht unterstützt.",
+  "the CPU temperature can't be read": "die CPU-Temperatur kann nicht gelesen werden",
+  "{0}: a water cooler's pump, left alone": "{0}: Pumpe einer Wasserkühlung, bleibt unangetastet",
+  "The PawnIO installer didn't start.": "Das PawnIO-Installationsprogramm ist nicht gestartet.",
+  "The PawnIO installer didn't start ({0}).": "Das PawnIO-Installationsprogramm ist nicht gestartet ({0}).",
+  "The PawnIO installer didn't finish in time.": "Das PawnIO-Installationsprogramm wurde nicht rechtzeitig fertig.",
+  "The PawnIO installer ended with error {0}.": "Das PawnIO-Installationsprogramm endete mit Fehler {0}.",
+  "The PawnIO installer ran, but the driver isn't there.": "Das PawnIO-Installationsprogramm lief, aber der Treiber ist nicht da."
 }

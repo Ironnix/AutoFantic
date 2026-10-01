@@ -107,6 +107,8 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
         // 0. which headers really have a fan
         string inventoryPath = Path.Combine(folder, CalibrationFiles.Inventory);
         var inventory = FanInventory.Load(inventoryPath);
+        if (inventory?.Fits(session.Channels) == false)
+            inventory = null; // other fan outputs than when the fans were found (e.g. the PawnIO driver installed since)
         if (inventory is null)
         {
             Report(CalibrationStage.FindingFans, Texts.T("Finding out which headers have a fan on them (the fans change one by one) …"), 0);

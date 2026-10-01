@@ -141,14 +141,38 @@ public static class UpdateInstaller
             Directory.Delete(work, recursive: true);
         Directory.CreateDirectory(work);
         string zip = Path.Combine(work, "download.zip");
+        try
+        {
+            await FetchAsync(release.ZipUrl, zip, release.Sha256, release.ZipSize, progress, cancel);
+        }
+        catch (InvalidDataException)
+        {
+            Directory.Delete(work, recursive: true);
+            throw;
+        }
 
+        string files = Path.Combine(work, "files");
+        ZipFile.ExtractToDirectory(zip, files); // refuses entries that would land outside the folder
+        File.Delete(zip);
+        if (!File.Exists(Path.Combine(files, ExeName)))
+            throw new InvalidDataException(T($"The download has no {ExeName}. Nothing was changed."));
+        return files;
+    }
+
+    /// <summary>
+    /// Downloads <paramref name="url"/> into <paramref name="file"/> and checks it against
+    /// <paramref name="sha256"/> (lowercase hex). If it doesn't match, the file is removed and this throws.
+    /// </summary>
+    /// <param name="size">The size to expect if the server doesn't say (for the progress).</param>
+    internal static async Task FetchAsync(string url, string file, string sha256, long size, IProgress<double>? progress, CancellationToken cancel)
+    {
         using (var http = UpdateCheck.Client(TimeSpan.FromMinutes(30)))
-        using (var response = await http.GetAsync(release.ZipUrl, HttpCompletionOption.ResponseHeadersRead, cancel))
+        using (var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancel))
         {
             response.EnsureSuccessStatusCode();
-            long total = response.Content.Headers.ContentLength ?? release.ZipSize;
+            long total = response.Content.Headers.ContentLength ?? size;
             await using var source = await response.Content.ReadAsStreamAsync(cancel);
-            await using var target = File.Create(zip);
+            await using var target = File.Create(file);
             var buffer = new byte[81920];
             long done = 0;
             int read;
@@ -162,20 +186,13 @@ public static class UpdateInstaller
         }
 
         string actual;
-        await using (var check = File.OpenRead(zip))
+        await using (var check = File.OpenRead(file))
             actual = Convert.ToHexStringLower(await SHA256.HashDataAsync(check, cancel));
-        if (actual != release.Sha256)
+        if (actual != sha256)
         {
-            Directory.Delete(work, recursive: true);
+            File.Delete(file);
             throw new InvalidDataException(T("The download doesn't match GitHub's checksum (damaged or changed on the way). Nothing was changed; try again."));
         }
-
-        string files = Path.Combine(work, "files");
-        ZipFile.ExtractToDirectory(zip, files); // refuses entries that would land outside the folder
-        File.Delete(zip);
-        if (!File.Exists(Path.Combine(files, ExeName)))
-            throw new InvalidDataException(T($"The download has no {ExeName}. Nothing was changed."));
-        return files;
     }
 
     /// <summary>

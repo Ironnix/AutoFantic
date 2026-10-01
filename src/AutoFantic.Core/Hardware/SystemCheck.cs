@@ -1,3 +1,4 @@
+using AutoFantic.Core.Analysis;
 using Microsoft.Win32;
 using static AutoFantic.Core.Texts;
 
@@ -17,18 +18,41 @@ public enum CheckResult
     Problem,
 }
 
-public sealed record SetupCheck(string Title, CheckResult Result, string Detail);
+/// <summary>What the user can do about a check, as a button next to it.</summary>
+public enum CheckFix
+{
+    None,
+
+    /// <summary>Open the PawnIO driver's download page (<see cref="SystemCheck.PawnIoUrl"/>).</summary>
+    GetPawnIo,
+
+    /// <summary>Start AutoFantic again (it opens the hardware only at its start).</summary>
+    Restart,
+}
+
+/// <summary>The PawnIO driver, which the mainboard's fan chip and the CPU temperature are read through.</summary>
+public enum PawnIo
+{
+    Installed,
+
+    Missing,
+
+    /// <summary>Installed while AutoFantic was running: it takes a restart of AutoFantic to use it.</summary>
+    InstalledSinceStart,
+}
+
+public sealed record SetupCheck(string Title, CheckResult Result, string Detail, CheckFix Fix = CheckFix.None);
 
 /// <summary>
 /// What AutoFantic checks when it starts: can it reach the fans (a supported fan chip and the PawnIO
-/// driver for it, the graphics card's fans), does it find the temperatures, and is another program
+/// driver for it, the graphics card's fans), does it read the temperatures, and is another program
 /// controlling the fans too. Shown on the set-up page, and the problems also in the log.
 /// </summary>
 public static class SystemCheck
 {
     public const string PawnIoUrl = "https://pawnio.eu";
 
-    /// <summary>The PawnIO driver's service is registered (LibreHardwareMonitor needs it for the mainboard's fan chip).</summary>
+    /// <summary>The PawnIO driver's service is registered (LibreHardwareMonitor needs it for the mainboard's fan chip and the CPU).</summary>
     public static bool PawnIoInstalled()
     {
         try
@@ -42,21 +66,28 @@ public static class SystemCheck
         }
     }
 
-    /// <param name="pawnIo">Whether the PawnIO driver is installed (<see cref="PawnIoInstalled"/>; a parameter for tests).</param>
+    /// <param name="pawnIo">The PawnIO driver (<see cref="PawnIoInstalled"/> now and when the hardware was opened; a parameter for tests).</param>
     /// <param name="otherTools">Other fan programs running (<see cref="FanToolCheck.Running"/>).</param>
-    public static IReadOnlyList<SetupCheck> Run(FanSession session, KeySensors keys, bool pawnIo, IReadOnlyList<string> otherTools)
+    public static IReadOnlyList<SetupCheck> Run(FanSession session, KeySensors keys, PawnIo pawnIo, IReadOnlyList<string> otherTools)
     {
         var checks = new List<SetupCheck>();
-        int mainboard = session.Channels.Count(c => !IsGpu(c)), gpu = session.Channels.Count(IsGpu);
+        // a water cooler's own controller is neither: it is there without the driver, the mainboard's outputs aren't
+        var mainboard = session.Channels.Where(c => c.IsMainboard).ToList();
+        var gpu = session.Channels.Where(c => c.IsGpu).ToList();
 
-        checks.Add(mainboard > 0
-            ? new SetupCheck(T("Mainboard fans"), CheckResult.Ok, T($"{mainboard} outputs on {session.Channels.First(c => !IsGpu(c)).Hardware}."))
-            : pawnIo
-            ? new SetupCheck(T("Mainboard fans"), CheckResult.Problem, T("None found: this mainboard's fan chip isn't supported yet."))
-            : new SetupCheck(T("Mainboard fans"), CheckResult.Problem, T($"The PawnIO driver is missing. Install it from {PawnIoUrl}, then restart AutoFantic.")));
+        checks.Add(mainboard.Count > 0
+            ? new SetupCheck(T("Mainboard fans"), CheckResult.Ok, T($"{mainboard.Count} outputs on {mainboard[0].Hardware}."))
+            : pawnIo switch
+            {
+                PawnIo.Missing => new SetupCheck(T("Mainboard fans"), CheckResult.Problem,
+                    T($"The PawnIO driver is missing: without it AutoFantic can't reach the mainboard's fans. AutoFantic's window installs it for you (Install PawnIO), or get it from {PawnIoUrl}."), CheckFix.GetPawnIo),
+                PawnIo.InstalledSinceStart => new SetupCheck(T("Mainboard fans"), CheckResult.Problem,
+                    T("The PawnIO driver is installed now: restart AutoFantic to use it."), CheckFix.Restart),
+                _ => new SetupCheck(T("Mainboard fans"), CheckResult.Problem, T("None found: this mainboard's fan chip isn't supported yet.")),
+            });
 
-        checks.Add(gpu > 0
-            ? new SetupCheck(T("Graphics card fans"), CheckResult.Ok, gpu == 1 ? T($"{gpu} output on {session.Channels.First(IsGpu).Hardware}.") : T($"{gpu} outputs on {session.Channels.First(IsGpu).Hardware}."))
+        checks.Add(gpu.Count > 0
+            ? new SetupCheck(T("Graphics card fans"), CheckResult.Ok, gpu.Count == 1 ? T($"{gpu.Count} output on {gpu[0].Hardware}.") : T($"{gpu.Count} outputs on {gpu[0].Hardware}."))
             : new SetupCheck(T("Graphics card fans"), CheckResult.Info, T("None found: the card keeps its own fan curve.")));
 
         var missing = new List<string>();
@@ -66,7 +97,16 @@ public static class SystemCheck
             missing.Add(T("GPU temperature"));
         if (keys.CpuPower is null)
             missing.Add(T("CPU power"));
-        checks.Add(missing.Count == 0
+        // a sensor that is there but reads 0 °C: the CPU is read through the PawnIO driver too
+        bool cpuReads = keys.CpuTemp is null || SensorPlausibility.IsPlausible(session.Read().Value(keys.CpuTemp));
+        checks.Add(!cpuReads
+            ? new SetupCheck(T("Temperatures"), CheckResult.Problem, pawnIo switch
+            {
+                PawnIo.Missing => T("The CPU temperature can't be read without the PawnIO driver."),
+                PawnIo.InstalledSinceStart => T("The CPU temperature can't be read until AutoFantic is restarted."),
+                _ => T("The CPU temperature can't be read (its sensor shows nothing sensible). Restart the PC; if it stays like this, this CPU isn't supported yet."),
+            })
+            : missing.Count == 0
             ? new SetupCheck(T("Temperatures"), CheckResult.Ok, T("CPU and GPU found."))
             : new SetupCheck(T("Temperatures"), keys.CpuTemp is null ? CheckResult.Problem : CheckResult.Warning, T($"Missing: {string.Join(", ", missing)}.")));
 
@@ -76,6 +116,4 @@ public static class SystemCheck
                 T($"{string.Join(", ", otherTools)} is running: switch its fan control off.")));
         return checks;
     }
-
-    private static bool IsGpu(FanChannel channel) => channel.Id.Contains("gpu", StringComparison.OrdinalIgnoreCase);
 }

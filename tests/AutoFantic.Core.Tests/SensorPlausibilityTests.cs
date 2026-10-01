@@ -69,6 +69,20 @@ public class SensorPlausibilityTests
     }
 
     [Fact]
+    public void A_cpu_that_reads_zero_from_the_start_is_caught_too()
+    {
+        // without the PawnIO driver the CPU's sensor is there but reads 0 °C: that isn't a cool CPU
+        var check = new SensorPlausibility(Keys);
+
+        string? error = null;
+        for (int i = 0; i < SensorPlausibility.ToleratedBadSamples; i++)
+            error = check.Check(With(0, 65));
+
+        Assert.NotNull(error);
+        Assert.Contains("CPU", error);
+    }
+
+    [Fact]
     public void A_sensor_missing_from_the_start_is_not_watched()
     {
         var check = new SensorPlausibility(Keys);
