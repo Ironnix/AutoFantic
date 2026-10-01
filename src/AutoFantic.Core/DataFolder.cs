@@ -28,7 +28,7 @@ public static class DataFolder
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // copying is a convenience: without it AutoFantic starts as if new
+            // copying is a convenience: without it AuFantic starts as if new
         }
 
         string folder = simulated ? Path.Combine(root, "sim") : root;
@@ -76,7 +76,7 @@ public static class DataFolder
                 File.Copy(file, target);
         }
         File.WriteAllText(Path.Combine(to, MigratedNote),
-            $"On {DateTime.Now:yyyy-MM-dd HH:mm} AutoFantic copied its data here from{Environment.NewLine}{from}{Environment.NewLine}That folder was left as it was; it isn't used any more.{Environment.NewLine}");
+            $"On {DateTime.Now:yyyy-MM-dd HH:mm} AuFantic copied its data here from{Environment.NewLine}{from}{Environment.NewLine}That folder was left as it was; it isn't used any more.{Environment.NewLine}");
         return true;
     }
 

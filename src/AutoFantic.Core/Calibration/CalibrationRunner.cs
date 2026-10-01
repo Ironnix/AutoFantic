@@ -26,7 +26,7 @@ public sealed record CalibrationSample(double Seconds, double? CpuTemp, double? 
 public sealed record CalibrationProgress(CalibrationStage Stage, string Message, int Run, int Runs,
     IReadOnlyList<double>? Speeds, CalibrationSample? Sample, double Done);
 
-/// <param name="BuiltInLoad">True: AutoFantic's own CPU + GPU load. False: whatever the user runs (a game), waited for.</param>
+/// <param name="BuiltInLoad">True: AuFantic's own CPU + GPU load. False: whatever the user runs (a game), waited for.</param>
 public sealed record CalibrationOptions(double Ambient, Preset Preset, bool BuiltInLoad)
 {
     /// <summary>How long each fan setting is held at least (longer while the result is still uncertain).</summary>

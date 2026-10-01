@@ -92,7 +92,7 @@ public sealed record OpportunityReport(
 
 /// <summary>
 /// Replays a recorded session (e.g. an evening of gaming) through the experiment rules: how often
-/// would AutoFantic have been allowed to start an experiment, how many would have completed,
+/// would AuFantic have been allowed to start an experiment, how many would have completed,
 /// and what blocked the rest. Answers the central question of the design, "is normal use a
 /// good enough test?", with real data before any learning code exists.
 ///

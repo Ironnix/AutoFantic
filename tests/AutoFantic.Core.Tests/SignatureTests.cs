@@ -48,7 +48,7 @@ public sealed class SignatureTests : IDisposable
         Signature.CheckSamePublisher(current, AlsoSigned); // same publisher: fine
         Assert.Throws<InvalidDataException>(() => Signature.CheckSamePublisher(current, unsigned));
 
-        // an unsigned AutoFantic (a build from source, the releases before signing) takes any update
+        // an unsigned AuFantic (a build from source, the releases before signing) takes any update
         Signature.CheckSamePublisher(unsigned, current);
         Signature.CheckSamePublisher(unsigned, unsigned);
     }

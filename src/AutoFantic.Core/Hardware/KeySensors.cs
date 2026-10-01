@@ -1,6 +1,6 @@
 namespace AutoFantic.Core.Hardware;
 
-/// <summary>The handful of sensors AutoFantic actually reasons about. Each is a sensor id, or null if not found.</summary>
+/// <summary>The handful of sensors AuFantic actually reasons about. Each is a sensor id, or null if not found.</summary>
 public sealed record KeySensors(
     string? CpuTemp,
     string? CpuPower,

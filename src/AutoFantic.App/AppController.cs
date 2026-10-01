@@ -49,7 +49,7 @@ internal sealed class AppController : IDisposable
 
     public string RunsPath { get; }
 
-    /// <summary>What AutoFantic did: safety stops, sensor problems, fans off and on, calibrations …</summary>
+    /// <summary>What AuFantic did: safety stops, sensor problems, fans off and on, calibrations …</summary>
     public ActivityLog Log { get; }
 
     /// <summary>The history of temperatures, power and fans (history.db), and the user's warnings.</summary>
@@ -86,7 +86,7 @@ internal sealed class AppController : IDisposable
     /// <summary>The calibrated curves for the current preset; null before the first calibration.</summary>
     public CalibrationResult? Recommended { get; private set; }
 
-    /// <summary>True once there is a calibration: then AutoFantic drives the fans.</summary>
+    /// <summary>True once there is a calibration: then AuFantic drives the fans.</summary>
     public bool IsSetUp => Recommended is not null;
 
     public CurveOverrides Overrides { get; private set; }
@@ -131,7 +131,7 @@ internal sealed class AppController : IDisposable
                 return;
             _userPaused = value;
             UpdatePause();
-            Log.Add(LogKind.Info, value ? T("Paused: the BIOS controls the fans.") : T("Resumed: AutoFantic controls the fans again."));
+            Log.Add(LogKind.Info, value ? T("Paused: the BIOS controls the fans.") : T("Resumed: AuFantic controls the fans again."));
         }
     }
 
@@ -145,7 +145,7 @@ internal sealed class AppController : IDisposable
                 return;
             _sleeping = value;
             UpdatePause();
-            Log.Add(LogKind.Info, value ? T("Going to sleep: the fans are handed to the BIOS.") : T("Woke up: AutoFantic takes the fans back."));
+            Log.Add(LogKind.Info, value ? T("Going to sleep: the fans are handed to the BIOS.") : T("Woke up: AuFantic takes the fans back."));
         }
     }
 
@@ -161,7 +161,7 @@ internal sealed class AppController : IDisposable
         string runs = DataFolder.Default(simulate);
         var log = new ActivityLog(runs);
 
-        // the hardware is opened once: a driver installed later takes a restart of AutoFantic
+        // the hardware is opened once: a driver installed later takes a restart of AuFantic
         bool pawnIo = simulate || SystemCheck.PawnIoInstalled();
         FanSession session;
         try
@@ -170,13 +170,13 @@ internal sealed class AppController : IDisposable
         }
         catch (Exception ex)
         {
-            problem = T($"AutoFantic can't open the hardware: {ex.Message}");
+            problem = T($"AuFantic can't open the hardware: {ex.Message}");
             log.Add(LogKind.Warning, problem);
             return null;
         }
 
         // the watchdog normally did this already; if it didn't run, a crashed run's fans go back now
-        Handback.RecoverIfNeeded(runs, session, log, T("AutoFantic at its start"));
+        Handback.RecoverIfNeeded(runs, session, log, T("AuFantic at its start"));
         session.HandbackPath = Handback.PathIn(runs);
 
         var inventory = FanInventory.Load(Path.Combine(runs, CalibrationFiles.Inventory));
@@ -210,7 +210,7 @@ internal sealed class AppController : IDisposable
         {
             UnexpectedEnd = LastRunEndedBadly(log),
         };
-        log.Add(LogKind.Info, T($"AutoFantic {AppVersion.Text} started{(simulate ? T(" (simulated PC)") : "")}: "
+        log.Add(LogKind.Info, T($"AuFantic {AppVersion.Text} started{(simulate ? T(" (simulated PC)") : "")}: "
             + $"{(app.IsSetUp ? T($"{T(app.Preset.Name)}, {app.Effective!.Groups.Count} fan groups.") : T("not set up yet, the BIOS controls the fans."))}"));
         foreach (var check in app.Checks.Where(c => c.Result >= CheckResult.Warning))
             log.Add(LogKind.Warning, $"{check.Title}: {check.Detail}");
@@ -290,7 +290,7 @@ internal sealed class AppController : IDisposable
 
     // ── updates ────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Whether AutoFantic checks for a new version by itself.</summary>
+    /// <summary>Whether AuFantic checks for a new version by itself.</summary>
     public UpdateSettings Updates { get; private set; } = new();
 
     /// <summary>A newer version on GitHub, from the last check that worked; null if there is none.</summary>
@@ -356,21 +356,21 @@ internal sealed class AppController : IDisposable
         if (Calibrating)
             throw new InvalidOperationException(T("A calibration is running: finish or stop it first."));
         if (!UpdateInstaller.CanInstallInto(AppContext.BaseDirectory))
-            throw new InvalidOperationException(T("This AutoFantic runs from the compiler's output, not a published build: build it again instead."));
+            throw new InvalidOperationException(T("This AuFantic runs from the compiler's output, not a published build: build it again instead."));
         try
         {
             Log.Add(LogKind.Info, T($"Updating to {release.Version}: downloading {release.ZipSize / 1e6:0} MB from GitHub …"));
             string files = await UpdateInstaller.DownloadAsync(release, UpdateWork, progress);
-            // once AutoFantic is signed, only the same publisher's exe may replace it
+            // once AuFantic is signed, only the same publisher's exe may replace it
             Signature.CheckSamePublisher(Path.Combine(AppContext.BaseDirectory, UpdateInstaller.ExeName), Path.Combine(files, UpdateInstaller.ExeName));
             UpdateInstaller.Install(files, AppContext.BaseDirectory);
         }
         catch (Exception ex)
         {
-            Log.Add(LogKind.Warning, T($"The update to {release.Version} didn't work: {ex.Message} AutoFantic {AppVersion.Text} keeps running."));
+            Log.Add(LogKind.Warning, T($"The update to {release.Version} didn't work: {ex.Message} AuFantic {AppVersion.Text} keeps running."));
             throw;
         }
-        Log.Add(LogKind.Info, T($"{release.Name} is installed. AutoFantic restarts into it; the BIOS has the fans for those few seconds."));
+        Log.Add(LogKind.Info, T($"{release.Name} is installed. AuFantic restarts into it; the BIOS has the fans for those few seconds."));
     }
 
     /// <summary>
@@ -379,7 +379,7 @@ internal sealed class AppController : IDisposable
     /// </summary>
     public void StartNewVersion(params string[] args) => Start(Path.Combine(AppContext.BaseDirectory, UpdateInstaller.ExeName), AppVersion.Text, args);
 
-    /// <summary>Starts this AutoFantic again (e.g. in another language); like <see cref="StartNewVersion"/>, the caller exits right after.</summary>
+    /// <summary>Starts this AuFantic again (e.g. in another language); like <see cref="StartNewVersion"/>, the caller exits right after.</summary>
     public void StartAgain(params string[] args) => Start(Environment.ProcessPath!, null, args);
 
     private void Start(string exe, string? updatedFrom, string[] args)
@@ -542,7 +542,7 @@ internal sealed class AppController : IDisposable
         return CoolingHealth.Minutes(Monitor.Store, calibration, to.AddDays(-7), to).Count;
     }
 
-    // a broken or locked history file must never stop AutoFantic: then the history stays in memory
+    // a broken or locked history file must never stop AuFantic: then the history stays in memory
     private static HistoryRecorder OpenMonitor(string runs, FanControlLoop loop, ActivityLog log)
     {
         HistoryStore store;
@@ -575,13 +575,15 @@ internal sealed class AppController : IDisposable
     public string? UnexpectedEnd { get; private init; }
 
     // a watchdog entry after the previous run's start: that run was killed or crashed
-    // (the start line in English or in German, Lang\de-app.json: the run before may have used the other language)
+    // (the start line in English or in German, Lang\de-app.json: the run before may have used the other language,
+    // and up to 0.1.9 it began with the old name, AutoFantic)
     private static string? LastRunEndedBadly(ActivityLog log)
     {
         var entries = log.Entries;
         int previousStart = -1;
         for (int i = entries.Count - 1; i >= 0 && previousStart < 0; i--)
-            if (entries[i].Kind == LogKind.Info && entries[i].Text.StartsWith("AutoFantic ", StringComparison.Ordinal)
+            if (entries[i].Kind == LogKind.Info
+                && (entries[i].Text.StartsWith("AuFantic ", StringComparison.Ordinal) || entries[i].Text.StartsWith("AutoFantic ", StringComparison.Ordinal))
                 && (entries[i].Text.Contains(" started", StringComparison.Ordinal) || entries[i].Text.Contains(" gestartet", StringComparison.Ordinal)))
                 previousStart = i;
         return entries.Skip(previousStart + 1).LastOrDefault(e => e.Kind == LogKind.Watchdog)?.Text;
@@ -612,7 +614,7 @@ internal sealed class AppController : IDisposable
 
     /// <summary>
     /// Installs the PawnIO driver after the user said yes: downloads its official installer, checks
-    /// it and runs it without a window. Afterwards AutoFantic has to start again to use the driver
+    /// it and runs it without a window. Afterwards AuFantic has to start again to use the driver
     /// (<see cref="StartAgain"/>). True if Windows wants a restart of the PC first; throws with the
     /// reason if it didn't work.
     /// </summary>
@@ -626,7 +628,7 @@ internal sealed class AppController : IDisposable
             bool restartPc = await PawnIoSetup.RunAsync(installer);
             Log.Add(LogKind.Info, restartPc
                 ? T("The PawnIO driver is installed. Windows wants a restart of the PC to finish it.")
-                : T("The PawnIO driver is installed. AutoFantic starts again to use it."));
+                : T("The PawnIO driver is installed. AuFantic starts again to use it."));
             return restartPc;
         }
         catch (Exception ex)
@@ -688,7 +690,7 @@ internal sealed class AppController : IDisposable
     public bool IsBios(int group) => Recommended is { } r && Overrides.IsBios(r.Groups[group]);
 
     /// <summary>
-    /// Gives one group's fans to the BIOS (AutoFantic hands them back and leaves them alone, the
+    /// Gives one group's fans to the BIOS (AuFantic hands them back and leaves them alone, the
     /// others carry on) or takes them back. Its curve is kept either way.
     /// </summary>
     public void SetBios(int group, bool bios)
@@ -698,8 +700,8 @@ internal sealed class AppController : IDisposable
         Overrides = Overrides.WithBios(r.Groups[group], bios);
         Overrides.Save(Path.Combine(RunsPath, CalibrationFiles.Curves));
         Log.Add(LogKind.Fans, bios
-            ? T($"{r.Groups[group].Name}: given to the BIOS. AutoFantic leaves these fans alone; the other fans stay with AutoFantic.")
-            : T($"{r.Groups[group].Name}: AutoFantic controls these fans again."));
+            ? T($"{r.Groups[group].Name}: given to the BIOS. AuFantic leaves these fans alone; the other fans stay with AuFantic.")
+            : T($"{r.Groups[group].Name}: AuFantic controls these fans again."));
         Apply();
     }
 
@@ -795,7 +797,7 @@ internal sealed class AppController : IDisposable
             CurvesChanged?.Invoke();
             CalibrationEnded?.Invoke(outcome);
         })
-        { IsBackground = true, Name = "AutoFantic calibration" };
+        { IsBackground = true, Name = "AuFantic calibration" };
         thread.Start();
     }
 
@@ -860,7 +862,7 @@ internal sealed class AppController : IDisposable
             CurvesChanged?.Invoke();
             CalibrationEnded?.Invoke(outcome);
         })
-        { IsBackground = true, Name = "AutoFantic find fans" };
+        { IsBackground = true, Name = "AuFantic find fans" };
         thread.Start();
     }
 
@@ -868,7 +870,7 @@ internal sealed class AppController : IDisposable
     public string SensorList()
     {
         var snapshot = Session.Read();
-        var text = new System.Text.StringBuilder($"AutoFantic sensors · {snapshot.Time:yyyy-MM-dd HH:mm:ss}{Environment.NewLine}{Environment.NewLine}");
+        var text = new System.Text.StringBuilder($"AuFantic sensors · {snapshot.Time:yyyy-MM-dd HH:mm:ss}{Environment.NewLine}{Environment.NewLine}");
         foreach (var hardware in snapshot.Readings.GroupBy(r => (r.Hardware, r.HardwareType)))
         {
             text.AppendLine($"== {hardware.Key.Hardware} ({hardware.Key.HardwareType})");
@@ -878,7 +880,7 @@ internal sealed class AppController : IDisposable
         }
         text.AppendLine("== Fan outputs");
         foreach (var channel in Session.Channels)
-            text.AppendLine($"   #{channel.Index,-2} {channel.Hardware} / {channel.Name,-24} {channel.Percent:0} %   {(channel.IsSoftwareControlled ? "AutoFantic" : "BIOS")}   {channel.Id}");
+            text.AppendLine($"   #{channel.Index,-2} {channel.Hardware} / {channel.Name,-24} {channel.Percent:0} %   {(channel.IsSoftwareControlled ? "AuFantic" : "BIOS")}   {channel.Id}");
         return text.ToString();
     }
 
@@ -891,6 +893,6 @@ internal sealed class AppController : IDisposable
         Monitor.FinishSession();
         Monitor.Store.Dispose();
         Session.Dispose();
-        Log.Add(LogKind.Info, T("AutoFantic exited: the fans are back on BIOS control."));
+        Log.Add(LogKind.Info, T("AuFantic exited: the fans are back on BIOS control."));
     }
 }

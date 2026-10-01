@@ -8,7 +8,7 @@ internal static class Usage
             autofantic-spike: Phase 0 test tool (run as administrator)
 
               test     [--runs folder]
-                  The test console (AutoFantic → Settings → Developer): find my fans, calibrate, curves,
+                  The test console (AuFantic → Settings → Developer): find my fans, calibrate, curves,
                   plus the optional tests. Asks for admin rights itself; results go to runs\.
 
               calibrate [--ambient 22] [--profile 80] [--hold 90] [--runs folder] [--builtin-load]
@@ -18,7 +18,7 @@ internal static class Usage
                   Uses runs\fans.json (from "Find my fans"); runs discover first if it's missing.
 
               run      [--runs folder]
-                  "Use my curves": AutoFantic runs the fans with the calibrated curves until
+                  "Use my curves": AuFantic runs the fans with the calibrated curves until
                   Ctrl+C, for everything the PC does. Safety limits stay active.
 
               load     [--seconds 30] [--cpu 0.6] [--gpu 0.9]
@@ -26,7 +26,7 @@ internal static class Usage
 
               list     [--out hardware.txt]
                   Every sensor and every controllable fan, plus the key sensors
-                  AutoFantic picked (CPU/GPU temperature and power).
+                  AuFantic picked (CPU/GPU temperature and power).
 
               watch    [--csv log.csv] [--interval 1]
                   One status line per second: temperatures, power, fan RPM and %,
@@ -55,7 +55,7 @@ internal static class Usage
 
               analyze  <watch.csv> [--profile 80] [--experiment 6] [--cooldown 10] [--out analysis.txt]
                   Replays a watch log (e.g. an evening of gaming) through the experiment
-                  rules: how often could AutoFantic have learned, and what blocked it.
+                  rules: how often could AuFantic have learned, and what blocked it.
                   Reads only the file: no admin rights needed.
 
             Channels are the # numbers from "list" (or full ids). Below 25 % needs --force,

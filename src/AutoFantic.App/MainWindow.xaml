@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:AutoFantic.App"
-        Title="AutoFantic" Width="1120" Height="780" MinWidth="900" MinHeight="620"
+        Title="AuFantic" Width="1120" Height="780" MinWidth="900" MinHeight="620"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
@@ -55,6 +55,14 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- one blade of the logo's fan; the logo turns it three times around the middle -->
+        <Style x:Key="LogoBlade" TargetType="Path">
+            <Setter Property="Data" Value="M 126 102 C 116 84 108 62 110 42 A 88 88 0 0 1 202 80 C 182 86 164 98 152 116 Z" />
+            <Setter Property="Fill" Value="White" />
+            <Setter Property="Stroke" Value="White" />
+            <Setter Property="StrokeThickness" Value="8" />
+            <Setter Property="StrokeLineJoin" Value="Round" />
+        </Style>
         <!-- presets and fan chips: toggles shaped like cards -->
         <Style x:Key="Choice" TargetType="ToggleButton">
             <Setter Property="Cursor" Value="Hand" />
@@ -94,8 +102,26 @@
         <!-- sidebar -->
         <DockPanel Grid.Column="0" Margin="16,24,8,16">
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,28">
-                <Ellipse x:Name="LogoDot" Width="14" Height="14" Fill="#1baf7a" Margin="0,0,10,0" VerticalAlignment="Center" />
-                <TextBlock Text="AutoFantic" FontSize="20" FontWeight="SemiBold" />
+                <!-- the logo (assets\logo.svg, a 256 box), its square in the state's colour like the icon next to the clock -->
+                <Viewbox Width="26" Height="26" Margin="0,0,10,0" VerticalAlignment="Center">
+                    <Canvas Width="256" Height="256">
+                        <Rectangle x:Name="LogoDot" Canvas.Left="8" Canvas.Top="8" Width="240" Height="240" RadiusX="56" RadiusY="56" Fill="#1baf7a" />
+                        <Path Style="{StaticResource LogoBlade}" />
+                        <Path Style="{StaticResource LogoBlade}">
+                            <Path.RenderTransform>
+                                <RotateTransform Angle="120" CenterX="128" CenterY="128" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Style="{StaticResource LogoBlade}">
+                            <Path.RenderTransform>
+                                <RotateTransform Angle="240" CenterX="128" CenterY="128" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Ellipse Canvas.Left="104" Canvas.Top="104" Width="48" Height="48" Fill="White" />
+                        <Ellipse Canvas.Left="118" Canvas.Top="118" Width="20" Height="20" Fill="{Binding Fill, ElementName=LogoDot}" />
+                    </Canvas>
+                </Viewbox>
+                <TextBlock Text="AuFantic" FontSize="20" FontWeight="SemiBold" />
             </StackPanel>
             <TextBlock x:Name="SideStatus" DockPanel.Dock="Bottom" Style="{StaticResource Caption}" Margin="6,0" />
             <StackPanel>
@@ -138,7 +164,7 @@
                             </Grid.ColumnDefinitions>
                             <Ellipse x:Name="StateDot" Width="18" Height="18" Fill="#1baf7a" VerticalAlignment="Center" Margin="0,0,16,0" />
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock x:Name="StateTitle" Text="AutoFantic controls your fans" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock x:Name="StateTitle" Text="AuFantic controls your fans" FontSize="18" FontWeight="SemiBold" />
                                 <TextBlock x:Name="StateDetail" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                             </StackPanel>
                             <Button x:Name="PauseButton" Grid.Column="2" Content="Pause" MinWidth="130" Padding="18,9" VerticalAlignment="Center"
@@ -326,7 +352,7 @@
                         <StackPanel>
                             <TextBlock Text="How it works" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                       Text="AutoFantic compares every steady minute (the same power for a while) with what the calibration measured at that power and those fan speeds. A warmer room makes CPU and GPU warmer by the same amount, at any load. Dust in the filters and heatsinks, or old thermal paste, makes them warmer the harder they work. AutoFantic tells the two apart, so a hot summer day doesn't look like dust. Every day's result is kept, so you can look back a year and more." />
+                                       Text="AuFantic compares every steady minute (the same power for a while) with what the calibration measured at that power and those fan speeds. A warmer room makes CPU and GPU warmer by the same amount, at any load. Dust in the filters and heatsinks, or old thermal paste, makes them warmer the harder they work. AuFantic tells the two apart, so a hot summer day doesn't look like dust. Every day's result is kept, so you can look back a year and more." />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -373,7 +399,7 @@
                             <StackPanel>
                                 <CheckBox x:Name="BiosBox" Content="Let the BIOS control these fans" />
                                 <TextBlock x:Name="BiosHint" Style="{StaticResource Caption}" Margin="28,2,16,0" TextWrapping="Wrap" Visibility="Collapsed"
-                                           Text="AutoFantic leaves them alone, also when a temperature limit is crossed: the BIOS's own curve applies. The other fans stay with AutoFantic, and this curve is kept for when you switch back." />
+                                           Text="AuFantic leaves them alone, also when a temperature limit is crossed: the BIOS's own curve applies. The other fans stay with AuFantic, and this curve is kept for when you switch back." />
                                 <CheckBox x:Name="AllowStop" Content="Switch off when the PC is idle and cool" Margin="0,10,0,0" />
                                 <TextBlock x:Name="StopHint" Style="{StaticResource Caption}" Margin="28,2,16,0" TextWrapping="Wrap" />
                                 <TextBlock x:Name="CurveHint" Style="{StaticResource Caption}" Margin="0,8,16,0"
@@ -398,7 +424,7 @@
                     <StackPanel x:Name="SetupCards" Visibility="Collapsed">
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <TextBlock Text="Welcome to AutoFantic" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="Welcome to AuFantic" Style="{StaticResource CardTitle}" />
                                 <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
                                            Text="Two steps, about 20 minutes. Until then the BIOS keeps your fans." />
                             </StackPanel>
@@ -432,7 +458,7 @@
                         <StackPanel>
                             <TextBlock x:Name="CalibrateTitle" Text="Calibrate" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                       Text="AutoFantic tries 9 fan settings while your PC works and learns what each fan cools. About 15 minutes. Each calibration adds to the last: a game teaches the GPU side, a render the CPU side." />
+                                       Text="AuFantic tries 9 fan settings while your PC works and learns what each fan cools. About 15 minutes. Each calibration adds to the last: a game teaches the GPU side, a render the CPU side." />
                             <StackPanel x:Name="CalibrateSetup" Margin="0,16,0,0">
                                 <RadioButton x:Name="LoadGame" GroupName="load" IsChecked="True" Margin="0,0,0,6"
                                              Content="My game: start it when asked, then play normally" />
@@ -498,7 +524,7 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- activity: what AutoFantic did -->
+            <!-- activity: what AuFantic did -->
             <Grid x:Name="LogPage" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -512,7 +538,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="0,0,16,0"
-                               Text="What AutoFantic did, newest first." />
+                               Text="What AuFantic did, newest first." />
                     <Button x:Name="OpenLogFile" Grid.Column="1" Content="Open the log file" Padding="16,9" />
                 </Grid>
                 <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0" Padding="20,14">
@@ -540,7 +566,7 @@
                                     <TextBlock x:Name="UpdateStatus" Style="{StaticResource Caption}" Margin="0,2,0,0" />
                                 </StackPanel>
                                 <CheckBox x:Name="UpdateDailyBox" Grid.Column="1" VerticalAlignment="Center" Content="Check by itself"
-                                          ToolTip="At every start and once a day AutoFantic asks GitHub for a new version. Nothing about your PC is sent." />
+                                          ToolTip="At every start and once a day AuFantic asks GitHub for a new version. Nothing about your PC is sent." />
                             </Grid>
                             <ProgressBar x:Name="UpdateProgress" Height="6" Minimum="0" Maximum="1" Margin="0,12,0,0" Visibility="Collapsed" />
                             <WrapPanel Margin="0,14,0,0">
@@ -588,7 +614,7 @@
                             <StackPanel Grid.Row="1" Margin="0,16,16,0">
                                 <TextBlock Text="Language" Style="{StaticResource CardTitle}" />
                                 <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
-                                           Text="English or German. AutoFantic starts again to switch." />
+                                           Text="English or German. AuFantic starts again to switch." />
                             </StackPanel>
                             <ComboBox x:Name="LanguageBox" Grid.Row="1" Grid.Column="1" VerticalAlignment="Center" MinWidth="160" Margin="0,16,0,0">
                                 <ComboBoxItem Content="Like Windows" />
@@ -620,7 +646,7 @@
                                 <Button x:Name="ConsoleButton" Content="Open the test console" Padding="16,9" Margin="0,0,10,10" />
                             </WrapPanel>
                             <TextBlock x:Name="DeveloperNote" Style="{StaticResource Caption}" Margin="0,4,0,0"
-                                       Text="The test console closes AutoFantic first, so only one program drives the fans." />
+                                       Text="The test console closes AuFantic first, so only one program drives the fans." />
                         </StackPanel>
                     </Border>
                 </StackPanel>

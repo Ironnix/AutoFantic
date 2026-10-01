@@ -33,7 +33,7 @@ public sealed class FanChannel(
     /// <summary>Current duty cycle in percent as reported by the hardware.</summary>
     public float? Percent => percent();
 
-    /// <summary>True while AutoFantic (or another program) drives the channel instead of the BIOS / driver.</summary>
+    /// <summary>True while AuFantic (or another program) drives the channel instead of the BIOS / driver.</summary>
     public bool IsSoftwareControlled => isSoftwareControlled();
 
     /// <summary>A graphics card's fan.</summary>

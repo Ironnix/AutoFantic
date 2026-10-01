@@ -8,7 +8,7 @@ namespace AutoFantic.Core.Control;
 
 public enum LoopState
 {
-    /// <summary>AutoFantic drives the fans by the calibrated curves.</summary>
+    /// <summary>AuFantic drives the fans by the calibrated curves.</summary>
     Running,
 
     /// <summary>Paused (by the user, or for sleep): the BIOS drives the fans.</summary>
@@ -20,11 +20,11 @@ public enum LoopState
     /// <summary>A temperature sensor stopped reporting: the BIOS drives the fans; retried after a minute.</summary>
     SensorProblem,
 
-    /// <summary>No calibration yet: the BIOS drives the fans; AutoFantic only reads the sensors.</summary>
+    /// <summary>No calibration yet: the BIOS drives the fans; AuFantic only reads the sensors.</summary>
     NotSetUp,
 }
 
-/// <param name="Percent">Speed AutoFantic set; 0 = off; null = the BIOS is in control.</param>
+/// <param name="Percent">Speed AuFantic set; 0 = off; null = the BIOS is in control.</param>
 /// <param name="Status">While running by the curves: the temperature followed, the curve's speed there and why the fan differs from it.</param>
 /// <param name="BiosPercent">For a fan the user gave to the BIOS: the speed the BIOS runs it at (read back), if the hardware says.</param>
 public sealed record FanReading(string Name, double? Percent, FanStatus? Status = null, double? BiosPercent = null)
@@ -43,7 +43,7 @@ public sealed record LoopStatus(
     IReadOnlyList<FanReading> Fans);
 
 /// <summary>
-/// AutoFantic in the background: once per second read the sensors, check the safety limits and
+/// AuFantic in the background: once per second read the sensors, check the safety limits and
 /// the sensors, and drive the fans by the calibrated curves. Everything that must never go wrong
 /// lives here, not in the tray icon: a crossed limit runs every fan at 100 % until it is safely
 /// cool, a lost sensor hands the fans to the BIOS (it reads its own sensors), pausing hands them to
@@ -177,7 +177,7 @@ public sealed class FanControlLoop : IDisposable
         var channels = ChannelsFor(_session, calibration);
         lock (_lock)
         {
-            // a fan AutoFantic drove that is no longer in the new calibration, or that the user gave to the BIOS, goes back to it
+            // a fan AuFantic drove that is no longer in the new calibration, or that the user gave to the BIOS, goes back to it
             var drivenNow = Driven(calibration, channels).ToHashSet();
             foreach (var channel in Driven(_calibration, _channels).Where(c => !drivenNow.Contains(c)).ToList())
                 _session.RestoreDefault(channel);
@@ -189,7 +189,7 @@ public sealed class FanControlLoop : IDisposable
         }
     }
 
-    // the channels of every group AutoFantic drives (not the ones the user gave to the BIOS)
+    // the channels of every group AuFantic drives (not the ones the user gave to the BIOS)
     private static IEnumerable<FanChannel> Driven(CalibrationResult? calibration, List<List<FanChannel>> channels) =>
         calibration is null ? [] : channels.Where((_, g) => !calibration.Groups[g].Bios).SelectMany(c => c);
 
@@ -246,7 +246,7 @@ public sealed class FanControlLoop : IDisposable
                 }
             }
         })
-        { IsBackground = true, Name = "AutoFantic fan control", Priority = ThreadPriority.AboveNormal };
+        { IsBackground = true, Name = "AuFantic fan control", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
     }
 
@@ -340,7 +340,7 @@ public sealed class FanControlLoop : IDisposable
                     if (_retryingSensors)
                     {
                         _retryingSensors = false;
-                        _log.Add(LogKind.Sensor, T("The sensors work again: AutoFantic controls the fans again."));
+                        _log.Add(LogKind.Sensor, T("The sensors work again: AuFantic controls the fans again."));
                     }
                     Apply(_controller.Step(s.Time, temps, cpuW, gpuW), speeds);
                     status = _controller.Status;

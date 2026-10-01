@@ -3,7 +3,7 @@ using AutoFantic.Core.Hardware;
 namespace AutoFantic.Core.Tests;
 
 /// <summary>
-/// A PC as AutoFantic's first other user had it: no PawnIO driver, so no mainboard outputs and a
+/// A PC as AuFantic's first other user had it: no PawnIO driver, so no mainboard outputs and a
 /// CPU that reads 0 °C and 0 W. What is still there: the graphics card's two fans and the pump of
 /// an NZXT Kraken (its own USB controller). Time runs 1000 times faster, so finding the fans takes a moment.
 /// </summary>
@@ -41,7 +41,7 @@ internal sealed class PcWithoutDriver : FanSession
 
     public float CpuTemp { get; }
 
-    /// <summary>Every output AutoFantic changed the speed of.</summary>
+    /// <summary>Every output AuFantic changed the speed of.</summary>
     public List<string> Set { get; } = [];
 
     public override IReadOnlyList<FanChannel> Channels => _channels;

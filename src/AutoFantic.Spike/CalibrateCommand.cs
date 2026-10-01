@@ -5,7 +5,7 @@ using AutoFantic.Core.Hardware;
 namespace AutoFantic.Spike;
 
 /// <summary>
-/// The calibration from the command line: the same <see cref="CalibrationRunner"/> the AutoFantic
+/// The calibration from the command line: the same <see cref="CalibrationRunner"/> the AuFantic
 /// window uses, with its progress printed to the console.
 /// </summary>
 internal static partial class CalibrateCommand

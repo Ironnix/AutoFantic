@@ -4,7 +4,7 @@ using System.IO;
 namespace AutoFantic.App;
 
 /// <summary>
-/// "Start with Windows" through the Task Scheduler: a task that starts AutoFantic at logon with
+/// "Start with Windows" through the Task Scheduler: a task that starts AuFantic at logon with
 /// highest privileges, so the hardware driver loads without an admin prompt every time.
 /// </summary>
 internal static class Autostart
@@ -21,7 +21,7 @@ internal static class Autostart
 
     public static bool Disable() => Schtasks(["/Delete", "/TN", TaskName, "/F"]) == 0;
 
-    /// <summary>The exe the task starts; null without a task. After moving or unpacking AutoFantic again it can be another copy.</summary>
+    /// <summary>The exe the task starts; null without a task. After moving or unpacking AuFantic again it can be another copy.</summary>
     public static string? Target()
     {
         if (Schtasks(["/Query", "/TN", TaskName, "/XML"], out string xml) != 0)

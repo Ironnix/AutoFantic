@@ -16,7 +16,7 @@ public sealed class UpdateTests : IDisposable
 
     private static string Release(string tag, bool draft = false, string? zip = null, string digest = "sha256:ABC123") => $$"""
         {
-          "tag_name": "{{tag}}", "name": "AutoFantic {{tag.TrimStart('v')}}", "draft": {{(draft ? "true" : "false")}}, "prerelease": true,
+          "tag_name": "{{tag}}", "name": "AuFantic {{tag.TrimStart('v')}}", "draft": {{(draft ? "true" : "false")}}, "prerelease": true,
           "html_url": "https://github.com/Ironnix/AutoFantic/releases/tag/{{tag}}", "body": "notes of {{tag}}", "published_at": "2026-10-01T12:00:00Z",
           "assets": [
             { "name": "{{zip ?? $"AutoFantic-{tag.TrimStart('v')}-win-x64.zip"}}", "size": 111480700, "digest": "{{digest}}",
@@ -34,7 +34,7 @@ public sealed class UpdateTests : IDisposable
 
         Assert.NotNull(found);
         Assert.Equal(new Version(0, 3, 0), found.Version);
-        Assert.Equal("AutoFantic 0.3.0", found.Name);
+        Assert.Equal("AuFantic 0.3.0", found.Name);
         Assert.Equal("notes of v0.3.0", found.Notes);
         Assert.Equal("abc123", found.Sha256);
         Assert.Equal(111480700, found.ZipSize);

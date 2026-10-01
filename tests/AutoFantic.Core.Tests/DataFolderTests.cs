@@ -31,7 +31,7 @@ public sealed class DataFolderTests : IDisposable
         Assert.True(File.Exists(Path.Combine(old, "fans.json")));      // never deleted
         Assert.False(File.Exists(Path.Combine(old, DataFolder.MigratedNote)));
 
-        // a second start doesn't copy over what AutoFantic has written since
+        // a second start doesn't copy over what AuFantic has written since
         File.WriteAllText(Path.Combine(next, "calibration.json"), "newer curves");
         Assert.False(DataFolder.MigrateOnce(old, next));
         Assert.Equal("newer curves", File.ReadAllText(Path.Combine(next, "calibration.json")));

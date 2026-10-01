@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace AutoFantic.App;
 
 /// <summary>
-/// How much memory and CPU AutoFantic itself uses, for Settings → Developer. Memory is what Task
+/// How much memory and CPU AuFantic itself uses, for Settings → Developer. Memory is what Task
 /// Manager shows as "Memory" (the private working set). The window alone costs about 40–50 MB while
 /// it's open, so the value with the window closed is remembered too (the tray icon measures it
 /// once a minute while the window is closed).

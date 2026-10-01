@@ -17,7 +17,7 @@ public static class CalibrationReport
         double topCpu = store.Calibrations.Max(c => c.TopCpu), topGpu = store.Calibrations.Max(c => c.TopGpu);
 
         var text = new StringBuilder();
-        text.AppendLine($"AutoFantic calibration · {stamp} · room {result.Ambient:0} °C · {result.Profile}");
+        text.AppendLine($"AuFantic calibration · {stamp} · room {result.Ambient:0} °C · {result.Profile}");
         text.AppendLine("Built from:");
         foreach (var source in result.Sources ?? [])
             text.AppendLine($"   {source}");

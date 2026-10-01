@@ -9,13 +9,13 @@ using static AutoFantic.Core.Texts;
 namespace AutoFantic.App;
 
 /// <summary>
-/// A second, tiny AutoFantic process that only waits for the main one to end. If it ended without
+/// A second, tiny AuFantic process that only waits for the main one to end. If it ended without
 /// handing the fans back (a crash, Task Manager → End task), it hands them back with what the main
 /// one kept in its fans-in-use file: the fan chip's memory of the BIOS setup. Without it a
 /// mainboard fan stays at its last speed until the PC restarts.
 ///
-/// Started through a short-lived middle process, so it isn't a child of AutoFantic: "End task" on
-/// AutoFantic (or its whole process tree) doesn't take the watchdog with it. It doesn't load the
+/// Started through a short-lived middle process, so it isn't a child of AuFantic: "End task" on
+/// AuFantic (or its whole process tree) doesn't take the watchdog with it. It doesn't load the
 /// window or the hardware library until it's needed, and it gives its memory back while it waits.
 /// </summary>
 internal static class Watchdog
@@ -78,7 +78,7 @@ internal static class Watchdog
         }
         catch (Exception ex)
         {
-            new ActivityLog(folder).Add(LogKind.Warning, T($"The watchdog couldn't hand the fans back ({ex.Message}); AutoFantic tries again when it starts. A PC restart always does it."));
+            new ActivityLog(folder).Add(LogKind.Warning, T($"The watchdog couldn't hand the fans back ({ex.Message}); AuFantic tries again when it starts. A PC restart always does it."));
         }
         return 0;
     }

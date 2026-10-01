@@ -49,7 +49,7 @@ public static class SensorLogReader
         using var reader = new StreamReader(path, Encoding.UTF8);
         var header = reader.ReadLine() is { } line ? SplitCsv(line) : throw new FormatException("The log is empty.");
         if (header.Count < 2 || header[0] != "time" || header[1] != "foreground")
-            throw new FormatException("Not an AutoFantic watch log (expected \"time,foreground,…\" in the first line).");
+            throw new FormatException("Not an AuFantic watch log (expected \"time,foreground,…\" in the first line).");
 
         var sensors = header.Skip(2).Select(ParseColumn).ToList();
 

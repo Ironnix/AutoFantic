@@ -115,7 +115,7 @@ public sealed class MonitoringTests : IDisposable
         for (int i = 0; i < 30; i++)
             Assert.Empty(Step(0, 0));                                // off on purpose: fine
         for (int i = 0; i < 30; i++)
-            Assert.Empty(Step(null, 0));                             // the BIOS has it: not AutoFantic's business
+            Assert.Empty(Step(null, 0));                             // the BIOS has it: not AuFantic's business
         for (int i = 0; i < 15; i++)
             Assert.Empty(Step(40, 0));
         Assert.Contains("Case fans (#5) stands still", Assert.Single(Step(40, 0)));

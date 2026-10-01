@@ -9,7 +9,7 @@ namespace AutoFantic.Core.Hardware;
 /// Installs the PawnIO driver for the user, so nobody has to find and run its installer: downloads
 /// the official installer of one fixed version from its GitHub release, checks it against that
 /// version's SHA-256 (so only exactly that file is ever run) and runs it without a window.
-/// AutoFantic has admin rights already, so Windows doesn't ask again. Only after the user said yes.
+/// AuFantic has admin rights already, so Windows doesn't ask again. Only after the user said yes.
 /// </summary>
 public static class PawnIoSetup
 {

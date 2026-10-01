@@ -5,7 +5,7 @@ using AutoFantic.Core.Hardware;
 namespace AutoFantic.Spike;
 
 /// <summary>
-/// "Use my curves": AutoFantic controls the fans with the calibrated curves, for games and
+/// "Use my curves": AuFantic controls the fans with the calibrated curves, for games and
 /// everything else, until stopped. The safety limits stay active; crossing one runs every fan at
 /// 100 % until it has cooled down, then control carries on.
 /// </summary>

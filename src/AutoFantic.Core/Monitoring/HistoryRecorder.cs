@@ -6,7 +6,7 @@ namespace AutoFantic.Core.Monitoring;
 
 /// <summary>
 /// Turns every step of the fan control into the monitor's history: temperatures, power, load, and
-/// per fan group the speed AutoFantic set and how fast it really turns. Checks the warnings and
+/// per fan group the speed AuFantic set and how fast it really turns. Checks the warnings and
 /// notices game sessions on the way. Fed on the fan control's thread (<see cref="FanControlLoop.Sampled"/>).
 /// </summary>
 public sealed class HistoryRecorder(HistoryStore store, KeySensors keys)

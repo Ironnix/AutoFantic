@@ -49,10 +49,10 @@ public sealed class ActivityLogTests : IDisposable
     [Fact]
     public void Lines_it_doesnt_understand_are_skipped()
     {
-        File.WriteAllLines(Path.Combine(_folder, ActivityLog.FileName), ["garbage", "2026-09-29 10:00:00 | Info | AutoFantic started"]);
+        File.WriteAllLines(Path.Combine(_folder, ActivityLog.FileName), ["garbage", "2026-09-29 10:00:00 | Info | AuFantic started"]);
 
         var log = new ActivityLog(_folder);
 
-        Assert.Equal("AutoFantic started", Assert.Single(log.Entries).Text);
+        Assert.Equal("AuFantic started", Assert.Single(log.Entries).Text);
     }
 }

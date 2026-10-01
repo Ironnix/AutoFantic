@@ -65,7 +65,7 @@ public class SystemCheckTests
 
         var mainboard = checks.Single(c => c.Title == "Mainboard fans");
         Assert.Equal(CheckFix.Restart, mainboard.Fix);
-        Assert.Contains("restart AutoFantic", mainboard.Detail);
+        Assert.Contains("restart AuFantic", mainboard.Detail);
     }
 }
 

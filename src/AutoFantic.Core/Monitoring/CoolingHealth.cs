@@ -56,7 +56,7 @@ public static class CoolingHealth
 
     /// <summary>
     /// The steady minutes between two times, from the history: only minutes where every fan's speed
-    /// is known (set by AutoFantic, or read back from a fan the user gave to the BIOS) and the power
+    /// is known (set by AuFantic, or read back from a fan the user gave to the BIOS) and the power
     /// stayed about the same.
     /// </summary>
     public static IReadOnlyList<Minute> Minutes(HistoryStore store, CalibrationResult calibration, DateTimeOffset from, DateTimeOffset to)
@@ -81,7 +81,7 @@ public static class CoolingHealth
             var speeds = new List<double>();
             foreach (var fan in fans)
             {
-                // a fan that changed a lot within the minute, or wasn't AutoFantic's (BIOS): not a clean minute
+                // a fan that changed a lot within the minute, or wasn't AuFantic's (BIOS): not a clean minute
                 if (!fan.TryGetValue(time, out var f) || f.Max - f.Min > 10)
                     break;
                 speeds.Add(f.Avg);

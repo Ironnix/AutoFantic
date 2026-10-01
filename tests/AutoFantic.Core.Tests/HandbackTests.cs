@@ -102,7 +102,7 @@ public sealed class HandbackTests : IDisposable
         pc.SetPercent(pc.Channels[1], 100); // stuck where the crashed run left it
         var log = ActivityLog.InMemoryOnly();
 
-        var entry = Handback.RecoverIfNeeded(_folder, pc, log, "AutoFantic at start");
+        var entry = Handback.RecoverIfNeeded(_folder, pc, log, "AuFantic at start");
 
         Assert.NotNull(entry);
         Assert.Equal(LogKind.Watchdog, entry.Kind);

@@ -6,7 +6,7 @@ namespace AutoFantic.Core.Updates;
 
 /// <summary>
 /// Who signed a file (Authenticode), after Windows checked that the signature is intact and
-/// trusted. Used by the updater: once AutoFantic is signed, an update must be signed by the same
+/// trusted. Used by the updater: once AuFantic is signed, an update must be signed by the same
 /// publisher, so a swapped or unsigned exe is never installed.
 /// </summary>
 public static class Signature
@@ -31,7 +31,7 @@ public static class Signature
 
     /// <summary>
     /// Throws if <paramref name="current"/> is signed and <paramref name="next"/> isn't signed by the
-    /// same publisher. An unsigned AutoFantic (a build from source, the releases before signing)
+    /// same publisher. An unsigned AuFantic (a build from source, the releases before signing)
     /// accepts any update that passed the checksum.
     /// </summary>
     public static void CheckSamePublisher(string current, string next)
@@ -39,7 +39,7 @@ public static class Signature
         if (Of(current) is not { } publisher)
             return;
         if (Of(next) is not { } other)
-            throw new InvalidDataException(T("The download isn't signed, but this AutoFantic is. Nothing was changed."));
+            throw new InvalidDataException(T("The download isn't signed, but this AuFantic is. Nothing was changed."));
         if (other != publisher)
             throw new InvalidDataException(T($"The download is signed by someone else ({other}). Nothing was changed."));
     }

@@ -122,7 +122,7 @@ internal sealed class Guard(FanSession session, KeySensors keys, CancellationTok
             return;
 
         Console.WriteLine($"Warning: {string.Join(", ", tools)} running. Make sure its fan control is OFF,");
-        Console.WriteLine("         otherwise it fights AutoFantic over the same fans (monitoring is fine).");
+        Console.WriteLine("         otherwise it fights AuFantic over the same fans (monitoring is fine).");
         Console.WriteLine();
     }
 }

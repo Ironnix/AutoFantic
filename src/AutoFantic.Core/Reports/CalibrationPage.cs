@@ -28,7 +28,7 @@ public static class CalibrationPage
             <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>AutoFantic fan plan</title>
+            <title>AuFantic fan plan</title>
             <style>
             :root {
               color-scheme: light;
@@ -263,7 +263,7 @@ public static class CalibrationPage
 
     private static void AppendExport(StringBuilder html, CalibrationResult result)
     {
-        html.Append("<h2>Use the curves without AutoFantic running</h2>");
+        html.Append("<h2>Use the curves without AuFantic running</h2>");
         html.Append("<div class=\"card\"><h3>Mainboard fans: BIOS (e.g. MSI Smart Fan, 4 points, temperature source CPU)</h3><div class=\"table-wrap\"><table><thead><tr><th>fan</th><th>point 1</th><th>point 2</th><th>point 3</th><th>point 4</th></tr></thead><tbody>");
         foreach (var g in result.Groups.Where(g => g.Follows != Component.GpuCore))
         {

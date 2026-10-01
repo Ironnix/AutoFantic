@@ -8,7 +8,7 @@ namespace AutoFantic.Core.Monitoring;
 /// <param name="Seconds">How long it has to stay past the limit, so a short spike doesn't warn.</param>
 public sealed record WarningRule(string Series, bool Above, double Limit, int Seconds = 10, bool Enabled = true);
 
-/// <param name="FanStopped">Warn when a fan stands still although AutoFantic runs it (blocked, broken, unplugged).</param>
+/// <param name="FanStopped">Warn when a fan stands still although AuFantic runs it (blocked, broken, unplugged).</param>
 public sealed record WarningSettings(bool FanStopped, IReadOnlyList<WarningRule> Rules)
 {
     public const string FileName = "warnings.json";
@@ -32,7 +32,7 @@ public sealed record WarningSettings(bool FanStopped, IReadOnlyList<WarningRule>
     }
 }
 
-/// <summary>A fan group in one sample: what AutoFantic set (null = the BIOS has it) and how fast it turns.</summary>
+/// <summary>A fan group in one sample: what AuFantic set (null = the BIOS has it) and how fast it turns.</summary>
 public sealed record FanSample(string Name, double? Percent, double? Rpm);
 
 /// <summary>
@@ -93,7 +93,7 @@ public sealed class WarningWatch
                 bool shouldTurn = fan.Percent is > 0;
                 bool standing = fan.Rpm is < StoppedBelowRpm;
                 if (Step($"stopped|{fan.Name}", time, shouldTurn && standing, !shouldTurn || fan.Rpm is >= StoppedBelowRpm, FanStoppedFor))
-                    warnings.Add(T($"{fan.Name} stands still although AutoFantic runs it at {fan.Percent:0} %: blocked, broken or unplugged?"));
+                    warnings.Add(T($"{fan.Name} stands still although AuFantic runs it at {fan.Percent:0} %: blocked, broken or unplugged?"));
             }
         }
         return warnings;

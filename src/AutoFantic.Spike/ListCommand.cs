@@ -23,7 +23,7 @@ internal static class ListCommand
     internal static string Build(FanSession session, Snapshot snapshot)
     {
         var text = new StringBuilder();
-        text.AppendLine($"AutoFantic hardware report · {snapshot.Time:yyyy-MM-dd HH:mm}");
+        text.AppendLine($"AuFantic hardware report · {snapshot.Time:yyyy-MM-dd HH:mm}");
         text.AppendLine();
 
         // grouped by hardware in the order the library reports it (the Super I/O chip carries the mainboard fans)
@@ -36,7 +36,7 @@ internal static class ListCommand
         }
 
         var keys = KeySensors.Detect(snapshot);
-        text.AppendLine("== Key sensors (what AutoFantic will use)");
+        text.AppendLine("== Key sensors (what AuFantic will use)");
         AppendKey(text, "CPU temperature", keys.CpuTemp, snapshot);
         AppendKey(text, "CPU power", keys.CpuPower, snapshot);
         AppendKey(text, "GPU core", keys.GpuTemp, snapshot);

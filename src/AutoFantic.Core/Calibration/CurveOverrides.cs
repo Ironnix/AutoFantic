@@ -11,7 +11,7 @@ public sealed record CurveOverride(IReadOnlyList<CurvePoint> Curve, bool AllowOf
 /// doesn't touch them; "Reset to recommended" removes one. The user may let a fan stop that the
 /// calibration keeps turning (the window offers it only for fans that measurably stood still at
 /// 0 %); the fan control still switches it on again as soon as it gets warm. And the user may give
-/// single fan groups back to the BIOS (<paramref name="Bios"/>): AutoFantic leaves them alone.
+/// single fan groups back to the BIOS (<paramref name="Bios"/>): AuFantic leaves them alone.
 /// </summary>
 /// <param name="Bios">The groups (by key) the BIOS controls; their curves are kept for when they come back.</param>
 public sealed record CurveOverrides(IReadOnlyDictionary<string, CurveOverride> ByGroup, IReadOnlyList<string>? Bios = null)

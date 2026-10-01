@@ -14,7 +14,7 @@ public enum CheckResult
     /// <summary>Works, but needs a look (another fan program running, a sensor missing).</summary>
     Warning,
 
-    /// <summary>AutoFantic can't do its job this way (no fan outputs, no temperatures).</summary>
+    /// <summary>AuFantic can't do its job this way (no fan outputs, no temperatures).</summary>
     Problem,
 }
 
@@ -26,7 +26,7 @@ public enum CheckFix
     /// <summary>Open the PawnIO driver's download page (<see cref="SystemCheck.PawnIoUrl"/>).</summary>
     GetPawnIo,
 
-    /// <summary>Start AutoFantic again (it opens the hardware only at its start).</summary>
+    /// <summary>Start AuFantic again (it opens the hardware only at its start).</summary>
     Restart,
 }
 
@@ -37,14 +37,14 @@ public enum PawnIo
 
     Missing,
 
-    /// <summary>Installed while AutoFantic was running: it takes a restart of AutoFantic to use it.</summary>
+    /// <summary>Installed while AuFantic was running: it takes a restart of AuFantic to use it.</summary>
     InstalledSinceStart,
 }
 
 public sealed record SetupCheck(string Title, CheckResult Result, string Detail, CheckFix Fix = CheckFix.None);
 
 /// <summary>
-/// What AutoFantic checks when it starts: can it reach the fans (a supported fan chip and the PawnIO
+/// What AuFantic checks when it starts: can it reach the fans (a supported fan chip and the PawnIO
 /// driver for it, the graphics card's fans), does it read the temperatures, and is another program
 /// controlling the fans too. Shown on the set-up page, and the problems also in the log.
 /// </summary>
@@ -80,9 +80,9 @@ public static class SystemCheck
             : pawnIo switch
             {
                 PawnIo.Missing => new SetupCheck(T("Mainboard fans"), CheckResult.Problem,
-                    T($"The PawnIO driver is missing: without it AutoFantic can't reach the mainboard's fans. AutoFantic's window installs it for you (Install PawnIO), or get it from {PawnIoUrl}."), CheckFix.GetPawnIo),
+                    T($"The PawnIO driver is missing: without it AuFantic can't reach the mainboard's fans. AuFantic's window installs it for you (Install PawnIO), or get it from {PawnIoUrl}."), CheckFix.GetPawnIo),
                 PawnIo.InstalledSinceStart => new SetupCheck(T("Mainboard fans"), CheckResult.Problem,
-                    T("The PawnIO driver is installed now: restart AutoFantic to use it."), CheckFix.Restart),
+                    T("The PawnIO driver is installed now: restart AuFantic to use it."), CheckFix.Restart),
                 _ => new SetupCheck(T("Mainboard fans"), CheckResult.Problem, T("None found: this mainboard's fan chip isn't supported yet.")),
             });
 
@@ -103,7 +103,7 @@ public static class SystemCheck
             ? new SetupCheck(T("Temperatures"), CheckResult.Problem, pawnIo switch
             {
                 PawnIo.Missing => T("The CPU temperature can't be read without the PawnIO driver."),
-                PawnIo.InstalledSinceStart => T("The CPU temperature can't be read until AutoFantic is restarted."),
+                PawnIo.InstalledSinceStart => T("The CPU temperature can't be read until AuFantic is restarted."),
                 _ => T("The CPU temperature can't be read (its sensor shows nothing sensible). Restart the PC; if it stays like this, this CPU isn't supported yet."),
             })
             : missing.Count == 0

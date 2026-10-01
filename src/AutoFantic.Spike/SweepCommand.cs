@@ -88,7 +88,7 @@ internal static class SweepCommand
 
         if (options.Get("--out") is { } outPath)
         {
-            string header = $"AutoFantic sweep · {first.Time:yyyy-MM-dd HH:mm} · {string.Join(", ", channels)} · steps {string.Join(" → ", steps)} %\n"
+            string header = $"AuFantic sweep · {first.Time:yyyy-MM-dd HH:mm} · {string.Join(", ", channels)} · steps {string.Join(" → ", steps)} %\n"
                 + (guard.StopReason is { } stop ? $"Ended early: {stop}\n" : "")
                 + "\n";
             File.WriteAllText(outPath, header + report, Encoding.UTF8);

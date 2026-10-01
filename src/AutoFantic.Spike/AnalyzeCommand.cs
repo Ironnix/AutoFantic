@@ -6,7 +6,7 @@ namespace AutoFantic.Spike;
 
 /// <summary>
 /// Replays a "watch --csv" log (e.g. an evening of gaming) through the experiment rules: how
-/// often would AutoFantic have been allowed to learn, and what stopped it the rest of the time.
+/// often would AuFantic have been allowed to learn, and what stopped it the rest of the time.
 /// Reads only the file: no hardware, no admin rights.
 /// </summary>
 internal static class AnalyzeCommand
@@ -57,7 +57,7 @@ internal static class AnalyzeCommand
         var text = new StringBuilder();
         var first = log[0].Snapshot.Time;
         var last = log[^1].Snapshot.Time;
-        text.AppendLine($"AutoFantic analysis · {Path.GetFileName(path)}");
+        text.AppendLine($"AuFantic analysis · {Path.GetFileName(path)}");
         text.AppendLine($"Recorded {Min(report.Total)} ({log.Count} samples), {first:yyyy-MM-dd HH:mm} → {last:HH:mm}");
         text.AppendLine();
 
@@ -96,7 +96,7 @@ internal static class AnalyzeCommand
         int needed = FanGroups * FanSteps * RepeatsPerCell;
         text.AppendLine(perHour > 0
             ? $"   → learning one load class ({FanGroups} fan groups × {FanSteps} steps × {RepeatsPerCell} repeats = {needed} experiments) would take about {needed / perHour:0} hours of this kind of use"
-            : "   → at this rate AutoFantic would never learn: see below what blocked it");
+            : "   → at this rate AuFantic would never learn: see below what blocked it");
         text.AppendLine();
 
         if (report.Attempts.Count > 0)

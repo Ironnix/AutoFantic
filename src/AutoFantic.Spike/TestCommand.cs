@@ -11,9 +11,9 @@ using AutoFantic.Core.Logging;
 namespace AutoFantic.Spike;
 
 /// <summary>
-/// "test": AutoFantic as a menu. Find the fans, calibrate while playing, see the best curves,
-/// let AutoFantic run the fans; the Phase 0 tests are tucked away under "More". Each step says in plain words what to do and saves its result into one
-/// folder (runs\ in the repo), where Claude reads it afterwards. Opened from AutoFantic → Settings → Developer.
+/// "test": AuFantic as a menu. Find the fans, calibrate while playing, see the best curves,
+/// let AuFantic run the fans; the Phase 0 tests are tucked away under "More". Each step says in plain words what to do and saves its result into one
+/// folder (runs\ in the repo), where Claude reads it afterwards. Opened from AuFantic → Settings → Developer.
 /// </summary>
 internal static class TestCommand
 {
@@ -38,7 +38,7 @@ internal static class TestCommand
             // only one program may drive the fans
             if (choice?.Trim() is "1" or "2" or "4" or "5" or "9" && !simulated && DataFolder.BackgroundRunning())
             {
-                Console.WriteLine("AutoFantic is running in the background (icon next to the clock) and controls the fans.");
+                Console.WriteLine("AuFantic is running in the background (icon next to the clock) and controls the fans.");
                 Console.WriteLine("Right-click the icon → Exit first, then choose this again.");
                 Console.WriteLine();
                 continue;
@@ -83,14 +83,14 @@ internal static class TestCommand
         var latest = runs.Latest("calibration-*.txt");
 
         Console.WriteLine(Line);
-        Console.WriteLine(" AutoFantic");
+        Console.WriteLine(" AuFantic");
         Console.WriteLine($" Results are saved in {runs.Path}");
         Console.WriteLine(Line);
         Console.WriteLine($"  1  Find my fans            once, about 2 min, PC idle       {fans}");
         Console.WriteLine($"  2  Calibrate               15-30 min, while you play        {(latest is null ? "" : $"✓ {latest.LastWriteTime:dd.MM. HH:mm}")}");
         Console.WriteLine("  3  Show my best curves");
-        Console.WriteLine("  4  Use my curves           AutoFantic runs your fans in this window");
-        Console.WriteLine("  5  Run in the background   the AutoFantic window + icon, this closes");
+        Console.WriteLine("  4  Use my curves           AuFantic runs your fans in this window");
+        Console.WriteLine("  5  Run in the background   the AuFantic window + icon, this closes");
         Console.WriteLine();
         Console.WriteLine("  9  More (developer tests)");
         Console.WriteLine("  0  Exit");
@@ -101,9 +101,9 @@ internal static class TestCommand
     {
         Console.WriteLine("""
             MORE (developer tests; not needed for normal use)
-              1  Record a gaming session   only watches, then shows how often AutoFantic could learn
+              1  Record a gaming session   only watches, then shows how often AuFantic could learn
               2  Measure one fan group     the knee of one fan group by hand, under a steady load
-              3  Crash test                what happens to the fans if AutoFantic crashes
+              3  Crash test                what happens to the fans if AuFantic crashes
               0  Back
             """);
         switch (input.Ask("Type a number and press Enter", CtrlC.Reset())?.Trim())
@@ -204,7 +204,7 @@ internal static class TestCommand
         Console.WriteLine("""
             CALIBRATE (15-30 minutes, while you play)
 
-            While you play, AutoFantic tries 9 combinations of fan speeds and watches how the
+            While you play, AuFantic tries 9 combinations of fan speeds and watches how the
             temperatures follow the power: that gives real numbers for your PC, even when the
             game's load jumps around. From that it works out the quietest fan speeds for every
             load, from idle to heavier than your game, so the result works for everything.
@@ -294,7 +294,7 @@ internal static class TestCommand
 
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = true, Arguments = simulated ? "--simulate --open" : "--open" })?.Dispose();
         Console.WriteLine("""
-            AutoFantic now runs in the background and its window opens. Later you'll find it as
+            AuFantic now runs in the background and its window opens. Later you'll find it as
             the round icon next to the clock (maybe under the little arrow): double-click opens
             the window again, right-click shows the fans and pause / exit. This window closes now.
             """);
@@ -314,7 +314,7 @@ internal static class TestCommand
         Console.WriteLine("""
             USE MY CURVES
 
-            AutoFantic now runs your fans with your calibrated curves: for games and everything
+            AuFantic now runs your fans with your calibrated curves: for games and everything
             else. Fans are off at idle where that was found safe, speed up quickly when it gets
             warmer and slow down gently. Keep this window open (you can minimize it).
             """);
@@ -364,10 +364,10 @@ internal static class TestCommand
         Console.WriteLine("""
             RECORD A GAMING SESSION (as long as you play; 30-60 minutes is ideal)
 
-            Nothing is changed: the fans stay on the BIOS curve, AutoFantic only watches and writes
+            Nothing is changed: the fans stay on the BIOS curve, AuFantic only watches and writes
             down temperatures, power and which program is in front, once per second.
             Afterwards it works out how often it could have learned something during your session.
-            This also checks that your games (and their anti-cheat) don't mind AutoFantic's driver.
+            This also checks that your games (and their anti-cheat) don't mind AuFantic's driver.
             """);
         string? game = input.Ask("Which game will you play? (just for the file name; b + Enter to go back)", CtrlC.Reset());
         if (game is null || game.Trim() == "b")
@@ -505,9 +505,9 @@ internal static class TestCommand
         Console.WriteLine("""
             CRASH TEST (about 1 minute)
 
-            What happens to the fans if AutoFantic crashes? A helper program sets a case fan and
+            What happens to the fans if AuFantic crashes? A helper program sets a case fan and
             the GPU fan to 100 %. Then it is force-closed, exactly like Task Manager → End task,
-            and the tool checks whether the fans go back to normal, and whether AutoFantic's
+            and the tool checks whether the fans go back to normal, and whether AuFantic's
             watchdog hand-back (the fan chip's saved BIOS setup) brings them back.
 
             If a fan stays at full speed afterwards, restart the PC when it suits you. That's loud
@@ -555,7 +555,7 @@ internal static class TestCommand
 
         var cancel = CtrlC.Reset();
         var helpers = new List<Process>();
-        var report = new StringBuilder($"AutoFantic crash test · {DateTime.Now:yyyy-MM-dd HH:mm}\n\n");
+        var report = new StringBuilder($"AuFantic crash test · {DateTime.Now:yyyy-MM-dd HH:mm}\n\n");
         try
         {
             var before = session.Read();

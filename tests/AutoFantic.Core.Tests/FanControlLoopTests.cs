@@ -128,7 +128,7 @@ public class FanControlLoopTests
         Assert.Null(caseFans.Percent);
         Assert.Equal(pc.Channels[1].Percent, caseFans.BiosPercent); // what the BIOS runs it at, read back
 
-        // and back to AutoFantic
+        // and back to AuFantic
         loop.UseCalibration(overrides.WithBios(calibration.Groups[1], false).ApplyTo(calibration), [30, 30, 40]);
         Run(loop, clock, 3);
         Assert.Equal(45, pc.Channels[1].Percent);

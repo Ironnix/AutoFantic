@@ -30,10 +30,10 @@ using static AutoFantic.Core.Texts;
 namespace AutoFantic.App;
 
 /// <summary>
-/// The AutoFantic window: what the fans do right now (Overview), the history of temperatures,
+/// The AuFantic window: what the fans do right now (Overview), the history of temperatures,
 /// power and fans with the user's warnings (Monitor), their curves to look at and to set (Fan curves),
 /// the game sessions (Reports), whether the cooling got worse (Cooling health), calibrating and why the settings are what they are (Calibration), what
-/// AutoFantic did (Activity), and the few settings plus developer tools. Before the first
+/// AuFantic did (Activity), and the few settings plus developer tools. Before the first
 /// calibration the Calibration page is the set-up (checks, find my fans, calibrate) and there are
 /// no curves yet. Everything it changes goes through <see cref="AppController"/>.
 /// </summary>
@@ -176,7 +176,7 @@ public partial class MainWindow : Window
         {
             bool ok = AutostartBox.IsChecked == true ? Autostart.Enable() : Autostart.Disable();
             if (!ok)
-                MessageBox.Show(this, T("Could not change the Windows start task."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(this, T("Could not change the Windows start task."), "AuFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
             ShowAutostart();
         };
         OpenPage.Click += (_, _) => OpenInExplorer(_app.PagePath);
@@ -186,7 +186,7 @@ public partial class MainWindow : Window
             if (_app.Log.FilePath is { } log && File.Exists(log))
                 OpenInExplorer(log);
         };
-        VersionText.Text = T($"AutoFantic {AppVersion.Text} · early development · MIT License");
+        VersionText.Text = T($"AuFantic {AppVersion.Text} · early development · MIT License");
         DataPath.Text = _app.RunsPath + (File.Exists(Path.Combine(_app.RunsPath, DataFolder.MigratedNote))
             ? T("  (copied from runs\\)")
             : "");
@@ -203,8 +203,8 @@ public partial class MainWindow : Window
             if (language == _app.Appearance.Language)
                 return;
             _app.SaveAppearance(_app.Appearance with { Language = language });
-            if (MessageBox.Show(this, Texts.T("AutoFantic starts again to switch the language. The BIOS has the fans for those few seconds."),
-                    "AutoFantic", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
+            if (MessageBox.Show(this, Texts.T("AuFantic starts again to switch the language. The BIOS has the fans for those few seconds."),
+                    "AuFantic", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
                 return; // then at the next start
             _app.StartAgain("--open");
             System.Windows.Application.Current.Shutdown();
@@ -305,7 +305,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// What depends on whether AutoFantic is set up and on which fan groups there are: the
+    /// What depends on whether AuFantic is set up and on which fan groups there are: the
     /// navigation, the set-up cards, the fan rows and the curve tabs. Rebuilt only when that changes
     /// (the fans were found, the first calibration finished, the fans changed).
     /// </summary>
@@ -316,7 +316,7 @@ public partial class MainWindow : Window
         NavHealth.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         QuietPanel.IsEnabled = setUp;
         NavCalibration.Content = setUp ? T("Calibration") : T("Set up");
-        CalibrationHeading.Text = setUp ? T("Calibration") : T("Set up AutoFantic");
+        CalibrationHeading.Text = setUp ? T("Calibration") : T("Set up AuFantic");
         SetupCards.Visibility = setUp ? Visibility.Collapsed : Visibility.Visible;
         InsightCards.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         CalibrateTitle.Text = setUp ? T("Calibrate") : T("Step 2 · Calibrate");
@@ -414,7 +414,7 @@ public partial class MainWindow : Window
                 LoopState.SensorProblem => (Problem, T("Sensor problem"), T("A sensor stopped reporting: the BIOS has the fans, retrying every minute.")),
                 _ when _app.QuietReason == "away" => (Running, T("Extra quiet: you're away"), T("Every fan at its slowest, the ones that can stop are off. Normal again when you're back.")),
                 _ when _app.QuietReason == "night" => (Running, T("Extra quiet for the night"), T($"Every fan at its slowest, the ones that can stop are off, until {_app.Quiet.NightTo}.")),
-                _ => (Running, T("AutoFantic controls your fans"), T("They follow your curves. The safety limits always stay on.")),
+                _ => (Running, T("AuFantic controls your fans"), T("They follow your curves. The safety limits always stay on.")),
             };
         StateDot.Fill = brush;
         LogoDot.Fill = brush;
@@ -485,7 +485,7 @@ public partial class MainWindow : Window
         bool ok = _app.SwitchPreset(preset);
         Cursor = null;
         if (!ok)
-            MessageBox.Show(this, T("Not enough measurements to switch yet."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T("Not enough measurements to switch yet."),"AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
         UpdatePresets();
     }
 
@@ -528,7 +528,7 @@ public partial class MainWindow : Window
         bool custom = _app.IsCustom(_selected), bios = effective.Bios;
         CurveTitle.Text = effective.Name;
         CurveSubtitle.Text = bios
-            ? T($"Controlled by the BIOS · {CalibrationReport.Role(effective)} · AutoFantic's {(custom ? T("curve (yours)") : T("curve"))} is kept for later")
+            ? T($"Controlled by the BIOS · {CalibrationReport.Role(effective)} · AuFantic's {(custom ? T("curve (yours)") : T("curve"))} is kept for later")
             : T($"Follows the {CalibrationInsights.FollowsName(effective.Follows)} · {CalibrationReport.Role(effective)} · {(custom ? T("your own curve") : T("the recommended curve"))}");
         BiosBox.IsChecked = bios;
         BiosHint.Visibility = bios ? Visibility.Visible : Visibility.Collapsed;
@@ -555,14 +555,14 @@ public partial class MainWindow : Window
         Editor.OffBelow = allows ? offAt : null;
         ResetCurve.IsEnabled = custom && !bios;
 
-        // the same curve for when AutoFantic isn't running: 4 points for a BIOS, the whole curve for Afterburner
+        // the same curve for when AuFantic isn't running: 4 points for a BIOS, the whole curve for Afterburner
         bool gpu = effective.Follows == Component.GpuCore;
         var points = gpu ? effective.Curve : CalibrationResult.BiosPoints(effective.Curve);
         FallbackText.Text = (gpu ? T("Afterburner curve: ") : T("BIOS curve: "))
             + string.Join("  ·  ", points.Select(p => $"{p.Temperature:0} °C → {p.Percent:0} %"));
         FallbackText.ToolTip = gpu
-            ? T("Without AutoFantic: MSI Afterburner's custom fan curve for the graphics card (a BIOS can't control it).")
-            : T("Without AutoFantic: the mainboard's own fan curve (e.g. MSI Smart Fan). A BIOS can only follow the CPU temperature.");
+            ? T("Without AuFantic: MSI Afterburner's custom fan curve for the graphics card (a BIOS can't control it).")
+            : T("Without AuFantic: the mainboard's own fan curve (e.g. MSI Smart Fan). A BIOS can only follow the CPU temperature.");
     }
 
     private void OnCurvesChanged() => Dispatcher.BeginInvoke(() =>
@@ -580,7 +580,7 @@ public partial class MainWindow : Window
     {
         if (!double.TryParse(RoomTemp.Text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double room) || room is < 5 or > 45)
         {
-            MessageBox.Show(this, T("Please enter the room temperature in °C, e.g. 22."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T("Please enter the room temperature in °C, e.g. 22."),"AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         _log.Clear();
@@ -694,7 +694,7 @@ public partial class MainWindow : Window
             bool pawnIo = check.Fix == CheckFix.GetPawnIo;
             var fix = new Button
             {
-                Content = !pawnIo ? T("Restart AutoFantic") : _installingPawnIo ? T("Installing PawnIO …") : T("Install PawnIO"),
+                Content = !pawnIo ? T("Restart AuFantic") : _installingPawnIo ? T("Installing PawnIO …") : T("Install PawnIO"),
                 IsEnabled = !(pawnIo && _installingPawnIo),
                 Padding = new Thickness(14, 6, 14, 6),
                 Margin = new Thickness(0, 8, 0, 0),
@@ -725,12 +725,12 @@ public partial class MainWindow : Window
         if (_pawnIoOffered || !_app.Checks.Any(c => c.Fix == CheckFix.GetPawnIo))
             return;
         _pawnIoOffered = true;
-        if (MessageBox.Show(this, T("AutoFantic needs the PawnIO driver to reach the mainboard's fans and to read the CPU temperature. It isn't installed on this PC.\n\nInstall it now? AutoFantic downloads it from PawnIO's page on GitHub (3 MB), installs it and starts again."),
-                "AutoFantic", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+        if (MessageBox.Show(this, T("AuFantic needs the PawnIO driver to reach the mainboard's fans and to read the CPU temperature. It isn't installed on this PC.\n\nInstall it now? AuFantic downloads it from PawnIO's page on GitHub (3 MB), installs it and starts again."),
+                "AuFantic", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
             InstallPawnIo();
     }
 
-    /// <summary>Installs the PawnIO driver (the user clicked or said yes) and starts AutoFantic again to use it.</summary>
+    /// <summary>Installs the PawnIO driver (the user clicked or said yes) and starts AuFantic again to use it.</summary>
     private async void InstallPawnIo()
     {
         if (_installingPawnIo)
@@ -745,11 +745,11 @@ public partial class MainWindow : Window
                 System.Windows.Application.Current.Shutdown();
                 return;
             }
-            MessageBox.Show(this, T("The PawnIO driver is installed. Windows wants a restart of the PC to finish it: restart the PC, then start AutoFantic again."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T("The PawnIO driver is installed. Windows wants a restart of the PC to finish it: restart the PC, then start AuFantic again."), "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            if (MessageBox.Show(this, T($"The PawnIO driver couldn't be installed: {ex.Message}\n\nOpen its download page to install it yourself?"), "AutoFantic", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+            if (MessageBox.Show(this, T($"The PawnIO driver couldn't be installed: {ex.Message}\n\nOpen its download page to install it yourself?"), "AuFantic", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
                 OpenInExplorer(SystemCheck.PawnIoUrl);
         }
         _installingPawnIo = false;
@@ -794,7 +794,7 @@ public partial class MainWindow : Window
         UpdatePresets();
         BuildInsights();
         MessageBox.Show(this, outcome.Message + (outcome.Success && outcome.Result is not null ? T("\n\nThe new settings are in use.") : ""),
-            "AutoFantic", MessageBoxButton.OK, outcome.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            "AuFantic", MessageBoxButton.OK, outcome.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
     });
 
     /// <summary>"Why these settings", "Your fans", "What each fan cools" and "Runs".</summary>
@@ -1440,7 +1440,7 @@ public partial class MainWindow : Window
                 ToolTip = T("After cleaning or replacing it: a new first week from today."),Visibility = hasFirstWeek ? Visibility.Visible : Visibility.Hidden };
             again.Click += (_, _) =>
             {
-                if (MessageBox.Show(this, T($"Start a new first week for {group.Name} from today? Do this after cleaning or replacing it."),"AutoFantic", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+                if (MessageBox.Show(this, T($"Start a new first week for {group.Name} from today? Do this after cleaning or replacing it."),"AuFantic", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
                     _app.StartFanAgain(group);
             };
             foreach (var (element, column) in new (UIElement, int)[] { (name, 0), (text, 1), (again, 2) })
@@ -1561,7 +1561,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// "Start with Windows", and a hint if the task starts another copy (an older one, before
-    /// AutoFantic was unpacked somewhere else): that copy wouldn't get this one's updates.
+    /// AuFantic was unpacked somewhere else): that copy wouldn't get this one's updates.
     /// </summary>
     private void ShowAutostart()
     {
@@ -1573,15 +1573,15 @@ public partial class MainWindow : Window
 
     private void OnUpdateStateChanged() => Dispatcher.BeginInvoke(ShowUpdates);
 
-    /// <summary>AutoFantic's own memory and CPU, now and with the window closed (Settings → Developer).</summary>
+    /// <summary>AuFantic's own memory and CPU, now and with the window closed (Settings → Developer).</summary>
     private void ShowSelfUsage()
     {
         var (cpu, average) = SelfUsage.Cpu();
         string closed = SelfUsage.WindowClosed is { } c
             ? T($"With the window closed: {c.Bytes / 1048576.0:0} MB (measured at {c.At:HH:mm}).")
             : T("With the window closed: not measured yet (it's measured every minute while the window is closed).");
-        SelfUsageText.Text = T($"AutoFantic uses {SelfUsage.Memory() / 1048576.0:0} MB of memory and {cpu:0.0} % CPU right now, with this window open. {closed} ")
-            + T($"On average since the start: {average:0.00} % CPU. The watchdog, a second small AutoFantic, adds about 6 MB.");
+        SelfUsageText.Text = T($"AuFantic uses {SelfUsage.Memory() / 1048576.0:0} MB of memory and {cpu:0.0} % CPU right now, with this window open. {closed} ")
+            + T($"On average since the start: {average:0.00} % CPU. The watchdog, a second small AuFantic, adds about 6 MB.");
     }
 
     /// <summary>A fan's speed in a few characters: "45 %", "off", "BIOS", or "BIOS 45 %" for a fan the user gave to the BIOS.</summary>
@@ -1600,7 +1600,7 @@ public partial class MainWindow : Window
         UpdateStatus.Text = _updating
             ?? (release is not null
                 ? T($"{release.Name} is available{(release.Published is { } p ? T($" (from {p.LocalDateTime:dd.MM.yyyy})") : "")}; you have {AppVersion.Text}. ")
-                  + T($"Updating downloads it ({release.ZipSize / 1e6:0} MB), closes AutoFantic for a few seconds (the BIOS keeps the fans) and starts the new version. Your data stays.")
+                  + T($"Updating downloads it ({release.ZipSize / 1e6:0} MB), closes AuFantic for a few seconds (the BIOS keeps the fans) and starts the new version. Your data stays.")
                 : _app.UpdateProblem is { } problem ? T($"You have {AppVersion.Text}. {problem}")
                 : _app.UpdateChecked is { } at ? T($"You have {AppVersion.Text}, the newest version (checked at {at.LocalDateTime:HH:mm}).")
                 : T($"You have {AppVersion.Text}."));
@@ -1609,7 +1609,7 @@ public partial class MainWindow : Window
         UpdateInstall.IsEnabled = UpdateCheckButton.IsEnabled = _updating is null;
     }
 
-    /// <summary>Downloads and installs the new version, then AutoFantic restarts into it.</summary>
+    /// <summary>Downloads and installs the new version, then AuFantic restarts into it.</summary>
     private async Task InstallUpdate()
     {
         if (_app.UpdateAvailable is not { } release)
@@ -1632,18 +1632,18 @@ public partial class MainWindow : Window
             _updating = null;
             UpdateProgress.Visibility = Visibility.Collapsed;
             ShowUpdates();
-            MessageBox.Show(this, T($"The update didn't work: {ex.Message}\n\nAutoFantic {AppVersion.Text} keeps running as before."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, T($"The update didn't work: {ex.Message}\n\nAuFantic {AppVersion.Text} keeps running as before."),"AuFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
-        UpdateStatus.Text = T($"{release.Name} is installed. AutoFantic starts again …");
+        UpdateStatus.Text = T($"{release.Name} is installed. AuFantic starts again …");
         try
         {
             _app.StartNewVersion("--open");
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, T($"{release.Name} is installed, but it didn't start ({ex.Message}). Start AutoFantic again yourself."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T($"{release.Name} is installed, but it didn't start ({ex.Message}). Start AuFantic again yourself."),"AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         System.Windows.Application.Current.Shutdown();
     }
@@ -1655,16 +1655,16 @@ public partial class MainWindow : Window
         OpenInExplorer(path);
     }
 
-    /// <summary>The old test console needs the fans to itself: AutoFantic hands them to the BIOS and closes first.</summary>
+    /// <summary>The old test console needs the fans to itself: AuFantic hands them to the BIOS and closes first.</summary>
     private void OpenConsole()
     {
         string console = Path.Combine(AppContext.BaseDirectory, "autofantic-spike.exe");
         if (!File.Exists(console))
         {
-            MessageBox.Show(this, T($"The test console (autofantic-spike.exe) isn't next to AutoFantic ({AppContext.BaseDirectory})."),"AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, T($"The test console (autofantic-spike.exe) isn't next to AuFantic ({AppContext.BaseDirectory})."),"AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        var answer = MessageBox.Show(this, T("AutoFantic closes (the fans go back to the BIOS) and the test console opens. Start AutoFantic again afterwards."),
+        var answer = MessageBox.Show(this, T("AuFantic closes (the fans go back to the BIOS) and the test console opens. Start AuFantic again afterwards."),
             T("Test console"),MessageBoxButton.OKCancel, MessageBoxImage.Information);
         if (answer != MessageBoxResult.OK)
             return;
@@ -1733,7 +1733,7 @@ public partial class MainWindow : Window
 
     private static void OpenInExplorer(string path)
     {
-        // through Explorer, so a browser or editor doesn't inherit AutoFantic's admin rights
+        // through Explorer, so a browser or editor doesn't inherit AuFantic's admin rights
         using var _ = Process.Start("explorer.exe", $"\"{path}\"");
     }
 

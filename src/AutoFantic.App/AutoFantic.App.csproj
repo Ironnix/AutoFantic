@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- no console window: AutoFantic lives as an icon next to the clock -->
+    <!-- no console window: AuFantic lives as an icon next to the clock -->
     <OutputType>WinExe</OutputType>
     <!-- the window is WPF (Windows 11 "Fluent" look); the icon next to the clock is WinForms' NotifyIcon -->
     <UseWPF>true</UseWPF>
@@ -10,6 +10,10 @@
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
     <RootNamespace>AutoFantic.App</RootNamespace>
     <AssemblyName>AutoFantic</AssemblyName>
+    <!-- what Task Manager and the file's properties call it: the new name (the file itself keeps the old one) -->
+    <AssemblyTitle>AuFantic</AssemblyTitle>
+    <!-- the logo (assets\logo.svg at 16 to 256 pixels): the exe's icon, which the window and the taskbar show too -->
+    <ApplicationIcon>AuFantic.ico</ApplicationIcon>
     <!-- one self-contained exe, like the test tool -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>

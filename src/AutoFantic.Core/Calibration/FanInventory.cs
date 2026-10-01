@@ -110,7 +110,7 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    /// <summary>Headers with a fan on them, pumps excluded: the only ones AutoFantic ever experiments with.</summary>
+    /// <summary>Headers with a fan on them, pumps excluded: the only ones AuFantic ever experiments with.</summary>
     public IEnumerable<FanHeader> Usable => Headers.Where(h => h.Connected && !h.IsPump);
 
     /// <summary>GPU fans of one card form one group; every mainboard header is its own group.</summary>

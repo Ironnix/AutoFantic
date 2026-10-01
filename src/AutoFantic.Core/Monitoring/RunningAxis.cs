@@ -1,7 +1,7 @@
 namespace AutoFantic.Core.Monitoring;
 
 /// <summary>
-/// A chart's time axis that leaves out the time nothing was recorded in (the PC was off, AutoFantic
+/// A chart's time axis that leaves out the time nothing was recorded in (the PC was off, AuFantic
 /// wasn't running): the stretches with data follow each other, with a little room at every cut.
 /// Positions run from 0 (left) to 1 (right). <see cref="Whole"/> is the plain axis without cuts.
 /// </summary>

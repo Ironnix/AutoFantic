@@ -25,7 +25,7 @@ public sealed class SessionTracker
 
     private const double BusyGpu = 40, BusyCpu = 25;
 
-    // AutoFantic itself (the built-in load of a calibration), the desktop and the lock screen aren't games
+    // AuFantic itself (the built-in load of a calibration), the desktop and the lock screen aren't games
     private static readonly HashSet<string> NotPrograms = new(StringComparer.OrdinalIgnoreCase)
     {
         "AutoFantic", "autofantic-spike", "explorer", "LockApp", "ShellExperienceHost", "SearchHost", "StartMenuExperienceHost", "dwm", "Idle",

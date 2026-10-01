@@ -192,7 +192,7 @@ internal sealed class HistoryChart : FrameworkElement
         }
     }
 
-    /// <summary>The points split where there is a gap (the PC was off, AutoFantic wasn't running).</summary>
+    /// <summary>The points split where there is a gap (the PC was off, AuFantic wasn't running).</summary>
     private static List<List<HistoryPoint>> Pieces(IReadOnlyList<HistoryPoint> points)
     {
         var steps = points.Zip(points.Skip(1), (a, b) => (b.Time - a.Time).TotalSeconds).Order().ToList();

@@ -20,7 +20,7 @@ public enum LogKind
     /// <summary>Find my fans and calibrations: started, finished, stopped.</summary>
     Calibration,
 
-    /// <summary>The fans were given back to the BIOS after AutoFantic ended unexpectedly.</summary>
+    /// <summary>The fans were given back to the BIOS after AuFantic ended unexpectedly.</summary>
     Watchdog,
 
     /// <summary>Something the user should look at: another fan tool, a missing driver, an error.</summary>
@@ -46,7 +46,7 @@ public sealed record ActivityEntry(DateTimeOffset Time, LogKind Kind, string Tex
 }
 
 /// <summary>
-/// What AutoFantic did, in plain words, newest last: safety stops, sensor problems, fans switching
+/// What AuFantic did, in plain words, newest last: safety stops, sensor problems, fans switching
 /// off and on, calibrations, pauses. Kept as a text file in the data folder (activity.log, one line
 /// per entry, readable in any editor) and the latest entries in memory for the window. The file is
 /// started afresh at about 1 MB; the one before is kept as activity.old.log. Thread-safe: the fan

@@ -8,7 +8,7 @@ using AutoFantic.Core.Logging;
 using AutoFantic.Core.Simulation;
 using AutoFantic.Spike;
 
-// Phase 0 spike: prove that AutoFantic can read the sensors and drive the fan headers directly.
+// Phase 0 spike: prove that AuFantic can read the sensors and drive the fan headers directly.
 // Every fan this tool changes is handed back to the BIOS when it exits, crashes or is stopped with Ctrl+C.
 
 // "°C" and "→" need UTF-8; numbers always with a decimal point, matching the CSV files
@@ -90,13 +90,13 @@ if (simSchedule is null)
     return 2;
 }
 
-// the test menu runs in its own window (AutoFantic → Settings → Developer): keep it open when something goes wrong
+// the test menu runs in its own window (AuFantic → Settings → Developer): keep it open when something goes wrong
 bool pauseOnError = args[0] == "test" && !Console.IsInputRedirected;
 
-// only one program may drive the fans: not while AutoFantic runs in the background
+// only one program may drive the fans: not while AuFantic runs in the background
 if (!simulate && args[0] is "set" or "discover" or "sweep" or "calibrate" or "run" && DataFolder.BackgroundRunning())
 {
-    Console.Error.WriteLine("AutoFantic is running in the background (icon next to the clock) and controls the fans.");
+    Console.Error.WriteLine("AuFantic is running in the background (icon next to the clock) and controls the fans.");
     Console.Error.WriteLine("Right-click the icon → Exit first, then start this again.");
     return 2;
 }

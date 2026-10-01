@@ -10,7 +10,7 @@ namespace AutoFantic.Core.Hardware;
 public sealed record ChipField(string Type, int[] Values);
 
 /// <summary>
-/// What a mainboard fan chip had set before AutoFantic took a fan over (LibreHardwareMonitor keeps
+/// What a mainboard fan chip had set before AuFantic took a fan over (LibreHardwareMonitor keeps
 /// it in the chip object: the original control mode and speed of every output it changed).
 /// </summary>
 /// <param name="HardwareId">The chip's identifier, e.g. "/lpc/nct6686d/0".</param>
@@ -18,7 +18,7 @@ public sealed record ChipField(string Type, int[] Values);
 public sealed record ChipState(string HardwareId, string ChipType, IReadOnlyDictionary<string, ChipField> Fields);
 
 /// <summary>
-/// fans-in-use-&lt;process id&gt;.json: exists only while AutoFantic (or the test console) drives at
+/// fans-in-use-&lt;process id&gt;.json: exists only while AuFantic (or the test console) drives at
 /// least one fan, one per process. It says which process, which fans, and what the BIOS had set on them. If that process ends
 /// without handing the fans back (a crash, "End task"), the watchdog, or the next start, finds the
 /// file and gives the fans back with it; otherwise a mainboard fan would stay stuck at its last
@@ -151,7 +151,7 @@ public static class ChipMemory
 
 /// <summary>
 /// Gives the fans back to the BIOS after a process that drove them ended without doing it itself.
-/// Used by the watchdog right after AutoFantic ends, and by AutoFantic and the test console when
+/// Used by the watchdog right after AuFantic ends, and by AuFantic and the test console when
 /// they start (in case the watchdog didn't run or ended too). Only one process does it at a time.
 /// </summary>
 public static class Handback
@@ -170,7 +170,7 @@ public static class Handback
     /// processes that still run are left alone. Null if there was nothing to do; otherwise the
     /// (last) log entry.
     /// </summary>
-    /// <param name="who">Who is doing it, for the log: "the watchdog", "AutoFantic at its start" …</param>
+    /// <param name="who">Who is doing it, for the log: "the watchdog", "AuFantic at its start" …</param>
     public static ActivityEntry? RecoverIfNeeded(string folder, FanSession session, ActivityLog log, string who)
     {
         if (!AnyIn(folder))
@@ -203,7 +203,7 @@ public static class Handback
                 var lines = session.HandBack(file);
                 File.Delete(path);
                 entry = log.Add(LogKind.Watchdog,
-                    T($"AutoFantic ended without handing the fans back (it had driven them since {file.Since.ToLocalTime():dd.MM. HH:mm}): {who} gave them back to the BIOS. {string.Join("; ", lines)}"));
+                    T($"AuFantic ended without handing the fans back (it had driven them since {file.Since.ToLocalTime():dd.MM. HH:mm}): {who} gave them back to the BIOS. {string.Join("; ", lines)}"));
             }
             return entry;
         }

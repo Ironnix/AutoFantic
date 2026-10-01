@@ -10,7 +10,7 @@ namespace AutoFantic.Core.Updates;
 /// <param name="Sha256">The zip's checksum as GitHub reports it (lowercase hex).</param>
 public sealed record Release(Version Version, string Name, string Notes, string PageUrl, string ZipUrl, long ZipSize, string Sha256, DateTimeOffset? Published);
 
-/// <summary>Whether AutoFantic checks for a new version by itself (once a day and at every start).</summary>
+/// <summary>Whether AuFantic checks for a new version by itself (once a day and at every start).</summary>
 public sealed record UpdateSettings(bool CheckDaily = true)
 {
     public const string FileName = "updates.json";
@@ -33,7 +33,7 @@ public sealed record UpdateSettings(bool CheckDaily = true)
 }
 
 /// <summary>
-/// Asks GitHub for AutoFantic's releases and finds one newer than this build. It's one small
+/// Asks GitHub for AuFantic's releases and finds one newer than this build. It's one small
 /// request to GitHub's public API; nothing about the PC is sent. Drafts don't show up (GitHub
 /// hides them), pre-releases do (every 0.x version is one).
 /// </summary>
@@ -84,7 +84,7 @@ public static class UpdateCheck
                 if (!name.StartsWith("AutoFantic-", StringComparison.OrdinalIgnoreCase) || !name.EndsWith("-win-x64.zip", StringComparison.OrdinalIgnoreCase)
                     || !digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) || url.Length == 0)
                     continue;
-                best = new Release(version, Text(release, "name") is { Length: > 0 } title ? title : $"AutoFantic {version}", Text(release, "body"),
+                best = new Release(version, Text(release, "name") is { Length: > 0 } title ? title : $"AuFantic {version}", Text(release, "body"),
                     Text(release, "html_url"), url, asset.TryGetProperty("size", out var size) && size.TryGetInt64(out long bytes) ? bytes : 0,
                     digest["sha256:".Length..].ToLowerInvariant(),
                     DateTimeOffset.TryParse(Text(release, "published_at"), out var published) ? published : null);
@@ -246,7 +246,7 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// Only a published AutoFantic (one exe) can update itself: not a build that runs from the
+    /// Only a published AuFantic (one exe) can update itself: not a build that runs from the
     /// compiler's output (AutoFantic.dll next to it), which would end up half old, half new.
     /// </summary>
     public static bool CanInstallInto(string appFolder) =>

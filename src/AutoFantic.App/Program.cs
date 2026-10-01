@@ -14,12 +14,12 @@ using static AutoFantic.Core.Texts;
 namespace AutoFantic.App;
 
 /// <summary>
-/// AutoFantic in the background: an icon next to the clock, a window to see and set the curves,
+/// AuFantic in the background: an icon next to the clock, a window to see and set the curves,
 /// the fans on the calibrated curves. Needs admin rights for the hardware driver; asks for them
 /// itself, or has them when started by "Start with Windows" (Task Scheduler, highest privileges).
 ///
 /// Before the first calibration the BIOS keeps the fans and the window opens on its set-up page.
-/// A watchdog process (<see cref="Watchdog"/>) hands the fans back if AutoFantic is killed.
+/// A watchdog process (<see cref="Watchdog"/>) hands the fans back if AuFantic is killed.
 ///
 /// Options for checking a build without touching the screen (with --simulate):
 ///   --selftest [--seconds 5]        start everything without an icon, run 5 s, exit 0 if it controlled the fans (or, not set up, only watched)
@@ -84,8 +84,8 @@ internal static class Program
         // the version from before the rename controls the fans: two programs must never fight over them
         if (!simulate && DataFolder.LegacyBackgroundRunning())
         {
-            System.Windows.MessageBox.Show(T("The older \"AutoFanatic\" is still running and controls the fans.\n\nExit it first (right-click its icon next to the clock → Exit), then start AutoFantic again."),
-                "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            System.Windows.MessageBox.Show(T("The older \"AutoFanatic\" is still running and controls the fans.\n\nExit it first (right-click its icon next to the clock → Exit), then start AuFantic again."),
+                "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return 0;
         }
 
@@ -98,8 +98,8 @@ internal static class Program
         {
             if (!quiet)
                 System.Windows.MessageBox.Show(!simulate && RunningCopy() is { } other
-                    ? T($"Another copy of AutoFantic is already running:\n{other}\n\nExit it first (right-click its icon next to the clock → Exit), then start this one again.")
-                    : T("AutoFantic is already running: look for its icon next to the clock."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+                    ? T($"Another copy of AuFantic is already running:\n{other}\n\nExit it first (right-click its icon next to the clock → Exit), then start this one again.")
+                    : T("AuFantic is already running: look for its icon next to the clock."), "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return 0;
         }
 
@@ -111,7 +111,7 @@ internal static class Program
         if (app is null)
         {
             if (!quiet)
-                System.Windows.MessageBox.Show(problem, "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+                System.Windows.MessageBox.Show(problem, "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return 1;
         }
 
@@ -130,7 +130,7 @@ internal static class Program
             {
                 app.Loop.Dispose();
                 if (!quiet)
-                    System.Windows.MessageBox.Show(T($"AutoFantic stopped: {e.Exception.Message}\n\nThe fans are back on BIOS control."), "AutoFantic", MessageBoxButton.OK, MessageBoxImage.Error);
+                    System.Windows.MessageBox.Show(T($"AuFantic stopped: {e.Exception.Message}\n\nThe fans are back on BIOS control."), "AuFantic", MessageBoxButton.OK, MessageBoxImage.Error);
                 wpf.Shutdown(1);
                 e.Handled = true;
             };
@@ -279,7 +279,7 @@ internal static class Program
         });
     }
 
-    /// <summary>The exe of the AutoFantic that is already running, if it's another copy than this one; null if it's this one, or can't be told.</summary>
+    /// <summary>The exe of the AuFantic that is already running, if it's another copy than this one; null if it's this one, or can't be told.</summary>
     private static string? RunningCopy()
     {
         foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(Environment.ProcessPath!)))
