@@ -29,6 +29,8 @@ public sealed class SimulatedPc : FanSession
     private readonly Random _noise;
     private readonly float[] _percent = new float[Fans.Length];
     private readonly bool[] _software = new bool[Fans.Length];
+    private readonly float[] _rpmBefore = new float[Fans.Length];
+    private readonly DateTimeOffset[] _setAt = new DateTimeOffset[Fans.Length];
     private readonly List<FanChannel> _channels;
 
     private DateTimeOffset _lastUpdate;
@@ -65,7 +67,7 @@ public sealed class SimulatedPc : FanSession
                 i, fan.Id, fan.Name, fan.Hardware, 0, 100,
                 percent: () => _percent[i],
                 isSoftwareControlled: () => _software[i],
-                set: value => { _percent[i] = value; _software[i] = true; },
+                set: value => { _rpmBefore[i] = Rpm(i); _setAt[i] = _clock(); _percent[i] = value; _software[i] = true; },
                 restoreDefault: () => { _percent[i] = Fans[i].Default; _software[i] = false; }))
             .ToList();
 
@@ -79,6 +81,9 @@ public sealed class SimulatedPc : FanSession
 
     /// <summary>How dusty the PC is: 1 = clean; 1.2 = heat gets out 20 % worse (for the cooling health).</summary>
     public double Dust { get; set; } = 1;
+
+    /// <summary>How long a fan that was switched off keeps turning before it stands still, in seconds (0 = it stops at once).</summary>
+    public double CoastSeconds { get; set; }
 
     /// <summary>What the PC is doing right now.</summary>
     public SimLoad Load => _testLoad ?? _schedule(_clock() - _start);
@@ -164,7 +169,14 @@ public sealed class SimulatedPc : FanSession
     // The GPU fan stops below 31 % (0-RPM mode), like many real cards.
     private float Effective(int fan) => fan == GpuFan && _percent[fan] <= 30 ? 0 : _percent[fan];
 
-    private float Rpm(int fan) => fan switch
+    private float Rpm(int fan)
+    {
+        float rpm = SteadyRpm(fan);
+        double coasted = (_clock() - _setAt[fan]).TotalSeconds;
+        return rpm == 0 && coasted < CoastSeconds ? _rpmBefore[fan] * (float)(1 - coasted / CoastSeconds) : rpm;
+    }
+
+    private float SteadyRpm(int fan) => fan switch
     {
         CpuFan => _percent[fan] < 20 ? 0 : 18 * _percent[fan],
         CaseFans => _percent[fan] < 25 ? 0 : 14 * _percent[fan],

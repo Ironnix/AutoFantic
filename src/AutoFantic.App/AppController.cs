@@ -653,8 +653,13 @@ internal sealed class AppController : IDisposable
     public bool IsCustom(int group) => Recommended is { } r && Overrides.For(r.Groups[group]) is not null;
 
     /// <summary>The group's fans measurably stood still at 0 % (fans.json): only then can they be switched off.</summary>
-    public bool CanStop(int group) =>
-        Recommended is { } r && Inventory?.Groups().FirstOrDefault(k => k.Headers.Select(h => h.ControlId).SequenceEqual(r.Groups[group].ControlIds))?.CanStop == true;
+    public bool CanStop(int group) => Found(group)?.CanStop == true;
+
+    /// <summary>False while it isn't measured what the group's fans do at 0 % ("Find my fans" tests it while the PC isn't busy).</summary>
+    public bool StopMeasured(int group) => Found(group)?.StopMeasured != false;
+
+    private FanGroup? Found(int group) =>
+        Recommended is { } r ? Inventory?.Groups().FirstOrDefault(k => k.Headers.Select(h => h.ControlId).SequenceEqual(r.Groups[group].ControlIds)) : null;
 
     /// <summary>The calibration itself switches this group off at idle (the fans-off test found that safe).</summary>
     public bool RecommendsStop(int group) => Recommended?.Groups[group].OffAt.Count > 0;
@@ -827,16 +832,13 @@ internal sealed class AppController : IDisposable
                 }
                 else
                 {
-                    // keep what the user said about each output's fans
-                    var said = Inventory?.Headers.ToDictionary(h => h.ControlId) ?? [];
-                    found = found with
-                    {
-                        Headers = found.Headers.Select(h => said.TryGetValue(h.ControlId, out var old) ? h with { FanCount = old.FanCount, LoudnessDb = old.LoudnessDb } : h).ToList(),
-                    };
+                    found = found.KeepingKnown(Inventory);
                     bool first = Inventory is null;
                     bool same = !first && found.Groups().Select(MeasurementStore.Key).SequenceEqual(Inventory!.Groups().Select(MeasurementStore.Key));
                     found.Save(Path.Combine(RunsPath, CalibrationFiles.Inventory));
                     Inventory = found;
+                    if (same)
+                        Recalculate(Preset); // which fans can stand still may be known only now
                     string names = string.Join(", ", found.Groups().Select(g => g.Name));
                     outcome = new CalibrationOutcome(true,
                         first ? T($"Found {found.Groups().Count} fan groups: {names}. Next: calibrate.")

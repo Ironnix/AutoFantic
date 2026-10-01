@@ -21,7 +21,7 @@ public sealed record FanHeader(
     int FanCount = 1,
     double LoudnessDb = 0)
 {
-    private const float StoppedBelowRpm = 50;
+    internal const float StoppedBelowRpm = 50;
 
     public bool Connected => RpmSensorId is not null;
 
@@ -29,6 +29,9 @@ public sealed record FanHeader(
 
     /// <summary>True if the fan stood still at a measured speed (a GPU in 0-RPM mode, or a fan that stops at 0 %).</summary>
     public bool CanStop => Rpm.Any(p => p.Rpm < StoppedBelowRpm);
+
+    /// <summary>False while nobody has looked at what the fan does at 0 %: then "can't stop" only means "not known yet".</summary>
+    public bool StopMeasured => CanStop || Rpm.Any(p => p.Percent <= 0);
 
     /// <summary>Highest measured duty cycle at which the fan stood still; null if it never did.</summary>
     public float? HighestStopped => Rpm.Where(p => p.Rpm < StoppedBelowRpm).Select(p => (float?)p.Percent).Max();
@@ -83,6 +86,9 @@ public sealed record FanGroup(string Name, IReadOnlyList<FanHeader> Headers)
 
     /// <summary>Allowed to stand still: only fans that showed a 0-RPM mode (typically GPU fans).</summary>
     public bool CanStop => Headers.All(h => h.CanStop);
+
+    /// <summary>False while it isn't measured what one of its fans does at 0 %.</summary>
+    public bool StopMeasured => Headers.All(h => h.StopMeasured);
 
     /// <summary>
     /// Lowest speed the group may run at while spinning. A fan that stood still at a measured step
@@ -155,6 +161,27 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
             Headers = Headers.Select(h => channels.Contains(h.Channel)
                 ? h with { FanCount = Math.Max(1, (int)Math.Round((double)fanCount / channels.Count)), LoudnessDb = loudnessDb }
                 : h).ToList(),
+        };
+    }
+
+    /// <summary>
+    /// A copy that keeps what was known before the fans were found again: what the user said about
+    /// each output's fans (how many, how loud) and, for the same fan, what was measured at speeds
+    /// "Find my fans" didn't test this time (0 % while the PC was busy, a standstill seen during a calibration).
+    /// </summary>
+    public FanInventory KeepingKnown(FanInventory? before)
+    {
+        var known = before?.Headers.ToDictionary(h => h.ControlId) ?? [];
+        return this with
+        {
+            Headers = Headers.Select(h => !known.TryGetValue(h.ControlId, out var old) ? h : h with
+            {
+                FanCount = old.FanCount,
+                LoudnessDb = old.LoudnessDb,
+                Rpm = h.RpmSensorId is null || h.RpmSensorId != old.RpmSensorId
+                    ? h.Rpm
+                    : h.Rpm.Concat(old.Rpm.Where(p => h.Rpm.All(now => now.Percent != p.Percent))).OrderBy(p => p.Percent).ToList(),
+            }).ToList(),
         };
     }
 

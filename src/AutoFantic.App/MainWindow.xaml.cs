@@ -67,6 +67,7 @@ public partial class MainWindow : Window
         ("3 months", TimeSpan.FromDays(91)), ("1 year", TimeSpan.FromDays(365)), // hourly values, kept for 400 days
     ];
     private const int MonitorEverySeconds = 5;
+    private const int MonitorPoints = 600; // per line across a chart
 
     // the palette's next slots after CPU (blue) and GPU (orange): red and violet were too close to orange and blue
     private static readonly Color HotspotColor = Color.FromRgb(0x1b, 0xaf, 0x7a);
@@ -544,7 +545,9 @@ public partial class MainWindow : Window
         AllowStop.IsEnabled = canStop && !bios;
         AllowStop.IsChecked = allows;
         StopHint.Text = !canStop
-            ? T("These fans keep turning at 0 %, so they can't be switched off.")
+            ? _app.StopMeasured(_selected)
+                ? T("These fans keep turning at 0 %, so they can't be switched off.")
+                : T("Not tested yet whether these fans stand still at 0 %: Calibration → Find my fans again, while no game is running.")
             : allows
             ? T($"Off at idle up to {part} {offAt:0} °C, on again above {offAt + CurveController.Hysteresis:0} °C or under load.")
               + (_app.RecommendsStop(_selected) ? "" : T(" (Your choice: the calibration keeps them on.)"))
@@ -634,7 +637,7 @@ public partial class MainWindow : Window
             row.Children.Add(new TextBlock { Text = group.Name, FontSize = 14, Margin = new Thickness(0, 0, 10, 0) });
             row.Children.Add(new TextBlock
             {
-                Text = T($"up to {top:0} rpm · {(group.CanStop ? T("can stop at 0 %") : T("keeps turning at 0 %"))}"),
+                Text = T($"up to {top:0} rpm · {(group.CanStop ? T("can stop at 0 %") : group.StopMeasured ? T("keeps turning at 0 %") : T("0 % not tested yet"))}"),
                 Style = (Style)FindResource("Caption"),
                 VerticalAlignment = VerticalAlignment.Center,
             });
@@ -1020,23 +1023,34 @@ public partial class MainWindow : Window
         var to = _app.Loop.Last?.Time ?? DateTimeOffset.Now;
         var from = to - _range;
         var series = store.AllSeries();
-        var data = series.ToDictionary(x => x.Key, x => store.Query(x.Key, from, to));
+        // one axis for all four charts, without the time the PC was off, so the same moment is at the same place in each
+        Dictionary<string, IReadOnlyList<HistoryPoint>> Read(int points) => series.ToDictionary(x => x.Key, x => store.Query(x.Key, from, to, points));
+        RunningAxis Axis(Dictionary<string, IReadOnlyList<HistoryPoint>> read) => RunningAxis.Of(read.Values.SelectMany(points => points).Select(p => p.Time), from, to);
+        var data = Read(MonitorPoints);
+        var axis = Axis(data);
+        double shown = axis.Seconds / _range.TotalSeconds;
+        if (shown < 0.5)
+        {
+            // the PC was off most of the time: the same width shows fewer hours, so ask for finer points
+            data = Read((int)Math.Min(MonitorPoints / shown, 100 * MonitorPoints));
+            axis = Axis(data);
+        }
 
         ChartLine? Line(Series x, Color color) =>
             data.TryGetValue(x.Key, out var points) && points.Count > 0 ? new ChartLine(x.Kind is SeriesKind.FanPercent or SeriesKind.FanRpm ? x.Name : T(x.Name), color, points) : null;
         IReadOnlyList<ChartLine> Lines(params ChartLine?[] lines) => [.. lines.OfType<ChartLine>()];
 
         TempChart.Show(Lines(Line(HistoryRecorder.CpuTemp, LiveChart.CpuColor), Line(HistoryRecorder.GpuTemp, LiveChart.GpuColor),
-            Line(HistoryRecorder.GpuHotspot, HotspotColor), Line(HistoryRecorder.GpuMemory, MemoryColor)), from, to, "°C");
-        PowerChart.Show(Lines(Line(HistoryRecorder.CpuPower, LiveChart.CpuColor), Line(HistoryRecorder.GpuPower, LiveChart.GpuColor)), from, to, "W", min: 0);
+            Line(HistoryRecorder.GpuHotspot, HotspotColor), Line(HistoryRecorder.GpuMemory, MemoryColor)), from, to, "°C", axis: axis);
+        PowerChart.Show(Lines(Line(HistoryRecorder.CpuPower, LiveChart.CpuColor), Line(HistoryRecorder.GpuPower, LiveChart.GpuColor)), from, to, "W", min: 0, axis: axis);
 
         // fans in the colours they have everywhere else; fans that are gone keep theirs after them
         var names = _app.GroupNames.ToList();
         Color FanColor(Series x, int order) => Palette[(names.IndexOf(x.Name) is >= 0 and var i ? i : names.Count + order) % Palette.Length];
         var percent = series.Where(x => x.Kind == SeriesKind.FanPercent).ToList();
         var rpm = series.Where(x => x.Kind == SeriesKind.FanRpm).ToList();
-        FanChart.Show(Lines([.. percent.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, "%", min: 0, max: 100);
-        RpmChart.Show(Lines([.. rpm.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, T("rpm"), min: 0);
+        FanChart.Show(Lines([.. percent.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, "%", min: 0, max: 100, axis: axis);
+        RpmChart.Show(Lines([.. rpm.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, T("rpm"), min: 0, axis: axis);
 
         BuildValues(series, data);
     }

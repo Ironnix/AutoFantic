@@ -2,8 +2,14 @@
 
 ## [0.1.10] - 01.10.2026
 
+### New
+
+- **The Monitor leaves out the time the PC was off:** the charts show only the time AutoFantic was running, one sitting after the other, with a dashed line where time was left out. The axis still shows the real time of day (every hour in the shorter ranges), with the date under the first label of each day; the longer ranges show days and months. Because less time fills the same width, the lines are also drawn in finer steps. The four charts share one axis, so the same moment is at the same place in each.
+
 ### Fixed
 
+- **"These fans keep turning at 0 %" after finding the fans again:** *Find my fans* only tested 100, 60 and 30 %, and running it again threw away what an earlier calibration had measured at 0 %. After that, mainboard fans that do stand still could no longer be switched off. Now *Find my fans* tests 0 % itself and gives the fan up to 20 seconds to come to a standstill, keeps what was measured before at speeds it doesn't test, and works the curves out again. If this happened to you: *Calibration → Find my fans again* while no game is running.
+- **No fan is stopped under load:** while a game or a render runs, *Find my fans* skips the 0 % test. The window then says "0 % not tested yet" instead of claiming the fans keep turning.
 - **An update no longer adds files:** it replaces `AutoFantic.exe` and whatever else of AutoFantic is already next to it. If you keep only the exe (say, on the desktop), the test console, readme, licence and changelog are no longer put there. This applies to updates made by 0.1.10 and later: the update to 0.1.10 itself is still done by your old version.
 
 ## [0.1.9] - 01.10.2026

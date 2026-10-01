@@ -69,7 +69,7 @@ public class SystemCheckTests
     }
 }
 
-/// <summary>Finding the fans on a PC without the driver, and with a water cooler that has its own controller.</summary>
+/// <summary>Finding the fans: on a PC without the driver and with a water cooler that has its own controller, and which fans can stand still.</summary>
 public class FanDiscoveryTests
 {
     [Fact]
@@ -110,5 +110,44 @@ public class FanDiscoveryTests
         // found by a version that took the pump for a fan: found again, so it is left alone from now on
         var old = found.WithPumps(new HashSet<int>());
         Assert.False(old.Fits(pc.Channels));
+    }
+
+    [Fact]
+    public void A_fan_that_takes_its_time_to_stand_still_is_found_to_stop_at_zero()
+    {
+        using var pc = new SimulatedPc(timeScale: 100, load: _ => SimLoad.Idle) { CoastSeconds = 12 };
+
+        var found = FanDiscovery.Run(pc, CancellationToken.None)!;
+
+        var cpuFan = found.Headers.Single(h => h.Name == "CPU Fan");
+        Assert.Equal([0, 30, 60, 100], cpuFan.Rpm.Select(p => p.Percent));
+        Assert.True(cpuFan.CanStop);
+        Assert.True(found.Headers.Single(h => h.Name == "Case Fans").CanStop);
+        Assert.Equal([60, 100], found.Headers.Single(h => h.Name == "Pump").Rpm.Select(p => p.Percent)); // a pump is never taken lower
+        Assert.All(pc.Channels, c => Assert.False(c.IsSoftwareControlled));
+    }
+
+    [Fact]
+    public void No_fan_is_stopped_while_a_game_runs_and_what_was_measured_before_is_kept()
+    {
+        using var pc = new SimulatedPc(timeScale: 400, load: _ => new SimLoad(CpuPower: 60, GpuPower: 120, CpuLoad: 30, GpuLoad: 60, "SimGame"));
+        var log = new List<string>();
+
+        var found = FanDiscovery.Run(pc, CancellationToken.None, log.Add)!;
+
+        var cpuFan = found.Headers.Single(h => h.Name == "CPU Fan");
+        Assert.Equal([30, 60, 100], cpuFan.Rpm.Select(p => p.Percent));
+        Assert.False(cpuFan.CanStop);
+        Assert.False(cpuFan.StopMeasured); // not "keeps turning at 0 %": nobody looked
+        Assert.Contains(log, line => line.Contains("CPU Fan") && line.Contains("0 % not tested"));
+
+        // found before, while idle: the fan stood still at 0 %, and the user said there are two of them
+        var before = found.WithRpmAtZero(new Dictionary<int, float> { [cpuFan.Channel] = 0 });
+        before = before.WithLoudness(before.Groups().Single(g => g.Name.StartsWith("CPU Fan")), fanCount: 2, loudnessDb: 5);
+        var kept = found.KeepingKnown(before).Headers.Single(h => h.Name == "CPU Fan");
+
+        Assert.Equal([0, 30, 60, 100], kept.Rpm.Select(p => p.Percent));
+        Assert.True(kept.CanStop);
+        Assert.Equal((2, 5), (kept.FanCount, kept.LoudnessDb));
     }
 }

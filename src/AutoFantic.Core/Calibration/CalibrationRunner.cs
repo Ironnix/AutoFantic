@@ -451,7 +451,7 @@ public sealed class CalibrationRunner(FanSession session, string folder, Calibra
         return new CalibrationOutcome(false, message, null, null);
     }
 
-    private static bool IsLoaded(double cpuLoad, double gpuLoad) => gpuLoad >= LoadedGpuPercent || cpuLoad >= LoadedCpuPercent;
+    internal static bool IsLoaded(double cpuLoad, double gpuLoad) => gpuLoad >= LoadedGpuPercent || cpuLoad >= LoadedCpuPercent;
 
     private string Describe(IReadOnlyList<double> speeds) =>
         string.Join(" · ", _groups.Select((g, i) => $"{(g.IsGpu ? "GPU" : $"#{g.Headers[0].Channel}")} {speeds[i]:0} %"));
