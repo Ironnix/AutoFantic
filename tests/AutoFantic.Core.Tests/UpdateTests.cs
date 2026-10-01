@@ -95,7 +95,7 @@ public sealed class UpdateTests : IDisposable
 
         Assert.Equal("new exe", File.ReadAllText(Path.Combine(app, "AutoFantic.exe")));
         Assert.Equal("new readme", File.ReadAllText(Path.Combine(app, "README.md")));
-        Assert.Equal("changes", File.ReadAllText(Path.Combine(app, "CHANGELOG.md")));
+        Assert.False(File.Exists(Path.Combine(app, "CHANGELOG.md"))); // wasn't there before: not added
         Assert.Equal("mine", File.ReadAllText(Path.Combine(app, "my-notes.txt"))); // not the update's: untouched
         Assert.Equal(2, Directory.GetFiles(app, "*.old").Length);
 
@@ -104,17 +104,31 @@ public sealed class UpdateTests : IDisposable
 
         Assert.Empty(Directory.GetFiles(app, "*.old"));
         Assert.False(Directory.Exists(work));
-        Assert.Equal(["AutoFantic.exe", "CHANGELOG.md", "README.md", "my-notes.txt"], Directory.GetFiles(app).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        Assert.Equal(["AutoFantic.exe", "README.md", "my-notes.txt"], Directory.GetFiles(app).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void An_exe_kept_on_its_own_gets_no_other_files_from_an_update()
+    {
+        string desktop = Folder("desktop", ("AutoFantic.exe", "old exe"), ("holiday.jpg", "mine"));
+        string files = Folder("new", ("AutoFantic.exe", "new exe"), ("autofantic-spike.exe", "console"), ("README.md", "readme"), ("LICENSE", "mit"), ("CHANGELOG.md", "changes"));
+
+        UpdateInstaller.Install(files, desktop);
+        UpdateInstaller.CleanUp(desktop, Path.Combine(_root, "no-work"));
+
+        Assert.Equal("new exe", File.ReadAllText(Path.Combine(desktop, "AutoFantic.exe")));
+        Assert.Equal(["AutoFantic.exe", "holiday.jpg"], Directory.GetFiles(desktop).Select(Path.GetFileName).Order(StringComparer.Ordinal));
     }
 
     [Fact]
     public void A_failed_install_puts_everything_back()
     {
-        string app = Folder("app", ("AutoFantic.exe", "old exe"), ("README.md", "old readme"));
-        Directory.CreateDirectory(Path.Combine(app, "z-blocked.txt")); // a folder where a file must go: the copy fails
-        string files = Folder("new", ("AutoFantic.exe", "new exe"), ("README.md", "new readme"), ("z-blocked.txt", "can't"));
+        string app = Folder("app", ("AutoFantic.exe", "old exe"), ("README.md", "old readme"), ("z-open.txt", "in use"));
+        string files = Folder("new", ("AutoFantic.exe", "new exe"), ("README.md", "new readme"), ("z-open.txt", "can't"));
 
-        Assert.ThrowsAny<Exception>(() => UpdateInstaller.Install(files, app));
+        // a file another program holds open can't be renamed: the install fails at the last file
+        using (File.Open(Path.Combine(app, "z-open.txt"), FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.ThrowsAny<Exception>(() => UpdateInstaller.Install(files, app));
 
         Assert.Equal("old exe", File.ReadAllText(Path.Combine(app, "AutoFantic.exe")));
         Assert.Equal("old readme", File.ReadAllText(Path.Combine(app, "README.md")));

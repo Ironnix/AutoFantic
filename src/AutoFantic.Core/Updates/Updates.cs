@@ -196,8 +196,10 @@ public static class UpdateInstaller
     }
 
     /// <summary>
-    /// Copies every file of <paramref name="files"/> (not subfolders) into <paramref name="appFolder"/>;
-    /// a file that is already there is renamed to .old first. All or nothing.
+    /// Puts the new AutoFantic.exe into <paramref name="appFolder"/>, and the new version of every
+    /// other file of <paramref name="files"/> (not subfolders) that is already there: the old one is
+    /// renamed to .old first. Files that aren't there (the test console, the readme) are not added:
+    /// someone who keeps only AutoFantic.exe, say on the desktop, gets only that. All or nothing.
     /// </summary>
     public static void Install(string files, string appFolder)
     {
@@ -208,6 +210,8 @@ public static class UpdateInstaller
             foreach (string file in Directory.GetFiles(files))
             {
                 string target = Path.Combine(appFolder, Path.GetFileName(file));
+                if (!File.Exists(target) && !Path.GetFileName(file).Equals(ExeName, StringComparison.OrdinalIgnoreCase))
+                    continue;
                 string? old = File.Exists(target) ? $"{target}.{stamp}.old" : null;
                 if (old is not null)
                     File.Move(target, old);

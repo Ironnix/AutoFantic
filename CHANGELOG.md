@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.10] - 01.10.2026
+
+### Fixed
+
+- **An update no longer adds files:** it replaces `AutoFantic.exe` and whatever else of AutoFantic is already next to it. If you keep only the exe (say, on the desktop), the test console, readme, licence and changelog are no longer put there. This applies to updates made by 0.1.10 and later: the update to 0.1.10 itself is still done by your old version.
+
 ## [0.1.9] - 01.10.2026
 
 ### New
