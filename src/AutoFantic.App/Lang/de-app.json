@@ -105,5 +105,7 @@
   "Installing the PawnIO driver {0}: downloading it from GitHub …": "PawnIO-Treiber {0} wird installiert: Download von GitHub …",
   "The PawnIO driver is installed. Windows wants a restart of the PC to finish it.": "Der PawnIO-Treiber ist installiert. Windows möchte den PC neu starten, um es abzuschließen.",
   "The PawnIO driver is installed. AuFantic starts again to use it.": "Der PawnIO-Treiber ist installiert. AuFantic startet neu, um ihn zu nutzen.",
-  "The PawnIO driver couldn't be installed: {0}": "Der PawnIO-Treiber konnte nicht installiert werden: {0}"
+  "The PawnIO driver couldn't be installed: {0}": "Der PawnIO-Treiber konnte nicht installiert werden: {0}",
+  "The curves were improved from everyday use ({0} minutes on {1} days since the calibration).": "Die Kurven wurden aus dem Alltag verbessert ({0} Minuten an {1} Tagen seit der Kalibrierung).",
+  "Back to the calibration's curves: what everyday use added no longer counts.": "Zurück zu den Kurven der Kalibrierung: Was der Alltag ergänzt hat, zählt nicht mehr."
 }

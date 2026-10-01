@@ -16,9 +16,10 @@ AuFantic was called AutoFantic up to version 0.1.9. The program file (`AutoFanti
 * **Finds your fans:** which fan outputs have a fan, how fast they turn, and which ones can stop. Empty outputs are ignored.
 * **Calibrates while you play:** start a calibration, play your game (or use the built-in load), and after about 15 minutes AuFantic knows how much each fan cools the CPU and the GPU. Every calibration adds to the ones before, so a GPU-heavy game and a CPU render complete each other.
 * **Picks the quietest fan speeds** for a preset for the whole PC: *Silent*, *Balanced*, *Cool* or *Max cooling*. Case fans follow whichever of CPU and GPU is warmer; curves never jump steeply.
+* **Improves from everyday use:** one click checks the curves against how the PC really ran since the calibration (every minute of temperatures, power and fan speeds is kept) and suggests better ones. You see each fan's curve before and after, and decide.
 * **Explains itself:** for each load level, the part that limits the cooling and why each fan runs as it does, plus every measurement run with its bottleneck.
 * **Monitor:** charts of temperatures, power and every fan's speed and RPM, from the last 10 minutes to the last year, the lowest / average / highest values, and warnings you set yourself (e.g. "GPU hotspot above 90 °C for 10 s", or a fan that stands still although it should turn).
-* **Runs in the background:** an icon next to the clock and a window with live temperatures and fan speeds, fan curves you can drag, the calibration, what it did (*Activity*) and settings. It can start with Windows. Every second it reads only the sensors it needs.
+* **Runs in the background:** an icon next to the clock and a window with live temperatures and fan speeds, fan curves you can drag, the calibration, what it did (*Log*) and settings. It can start with Windows. Every second it reads only the sensors it needs.
 * **A fallback without AuFantic:** each fan curve as the 4 points a BIOS fan curve takes (or, for the graphics card, as an MSI Afterburner curve), ready to copy.
 * **Switches fans off** when the PC is idle and cool, for every fan that can stop (you choose which).
 * **Extra quiet** when you're away (after a few minutes without keyboard or mouse) and/or at night (a time you set): every fan at its slowest, and off where it can stop, the graphics card's too, as long as it stays cool.
@@ -54,15 +55,15 @@ Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases)
 | **Fan curves** | one curve per fan: drag a point, double-click to add one, right-click to remove one. The recommended curve stays faint in the background. *Switch off when the PC is idle and cool* (drawing a point down to 0 % does the same). *Let the BIOS control these fans*: hands just this fan back to the BIOS, the others stay with AuFantic. *Reset to recommended*. Below: the same curve for the BIOS (or Afterburner), to copy |
 | **Reports** | every game session and a summary per game: time played, GPU and CPU temperature, hotspot, fan speed, power |
 | **Cooling health** | whether CPU and GPU run warmer than after the calibration at the same load (dust, paste): the last 7 days against a week, 4 weeks, 3 months and a year ago, in °C and in % (how much worse the cooling works), and a chart per day or per week over 30 days, 3 months or a year, with the room. **Fans:** each fan's speed at the same setting against its first week (worn bearing, dirt), *Start again* after cleaning |
-| **Calibration** (before the first one: **Set up**) | start a calibration with your game or the built-in load, with a live chart. Then *Why these settings*, *Your fans* (how many fans per output and how loud they are, since quiet fans are raised first), *What each fan cools* and *Runs* |
-| **Activity** | what AuFantic did, newest first: safety stops, sensor problems, fans switching off and on, calibrations, pauses, and what the watchdog did after a crash |
+| **Calibration** (before the first one: **Set up**) | start a calibration with your game or the built-in load, with a live chart. Then *Improve from everyday use* (analyse the history, compare each fan's curve now and as suggested, take it over or not), *Why these settings*, *Your fans* (how many fans per output and how loud they are, since quiet fans are raised first), *What each fan cools* and *Runs* |
+| **Log** | what AuFantic did, newest first: safety stops, sensor problems, fans switching off and on, calibrations, pauses, and what the watchdog did after a crash |
 | **Settings** | **Updates** (check now, update in one click, check by itself), *Start with Windows* (with a hint if it starts another copy of AuFantic), **Appearance** (like Windows, light or dark) and **Language** (English / Deutsch), the data folder, and a **Developer** section (AuFantic's own memory and CPU, find the fans again, all sensors, the test console) |
 
 ## How it works (short)
 
 1. AuFantic reads the sensors and drives the fan outputs through [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), built into the program. No other fan tool is needed.
 2. A calibration tries 9 fan combinations while the PC is under load. For each one it measures how the temperatures follow the power, second by second. That gives "°C per watt" even when the game's load jumps around.
-3. From all runs it builds a model of your PC: which fan cools what, and how loud each one is.
+3. From all runs it builds a model of your PC: which fan cools what, and how loud each one is. *Improve from everyday use* later checks that model against the minutes of normal use (only those in which every fan turned and the load had settled): how much warmer or cooler CPU and GPU really ran at a given power, and whether the PC ran heavier loads than any calibration saw. What each fan does stays as the calibrations measured it.
 4. For the chosen preset it finds the quietest fan speeds for every load level, from idle to heavier than anything measured, and turns them into one curve per fan. GPU fans follow the GPU, the CPU cooler the CPU, and fans that clearly cool both (case fans) follow whichever is warmer. No curve rises faster than 5 % per °C (except the last ramp to 100 % just above the target), so a fan doesn't jump between speeds when the temperature wobbles.
 5. In daily use the fans follow those curves. When nothing is going on (low load, cool) it reads every 2 seconds instead of every second. Temperatures are smoothed over a few seconds, fans speed up fast (+4 %/s) and slow down gently (−1 %/s) so the noise doesn't jump. That's why a fan can sit a little above its curve for a moment after a load spike.
 
@@ -77,7 +78,7 @@ Download the zip from [Releases](https://github.com/Ironnix/AutoFantic/releases)
 
 ## Where your data is stored
 
-Everything is in `%LocalAppData%\AutoFantic` as plain files (not uploaded): `fans.json` (your fans), `measurements.json` (every calibration run), `fans-off.json`, `calibration.json` (the current result), `curves.json` (your own curves), `activity.log` (what AuFantic did), `history.db` (SQLite: the monitor's history at 5-second values for 2 days, minute values for 30 days and hourly values for a year, plus the game sessions and the daily cooling health, kept for good; about 65 MB at most, of which the year of hourly values is about 7 MB), `warnings.json` (your warnings), `quiet.json` (extra quiet), `updates.json` (check by itself or not), `appearance.json` (light or dark, language), `fan-wear.json` (when a fan's first week starts, after cleaning or replacing it), and a readable report, `calibration.html` and `calibration-*.txt`. Earlier versions kept it in `runs\` next to the program; the first start copies it over once and leaves the old folder as it was. To use another folder, set the environment variable `AUTOFANTIC_DATA`.
+Everything is in `%LocalAppData%\AutoFantic` as plain files (not uploaded): `fans.json` (your fans), `measurements.json` (every calibration run), `fans-off.json`, `calibration.json` (the current result), `curves.json` (your own curves), `use.json` (what everyday use added to the calibration, if you took it over), `activity.log` (what AuFantic did), `history.db` (SQLite: the monitor's history at 5-second values for 2 days, minute values for 30 days and hourly values for a year, plus the game sessions and the daily cooling health, kept for good; about 65 MB at most, of which the year of hourly values is about 7 MB), `warnings.json` (your warnings), `quiet.json` (extra quiet), `updates.json` (check by itself or not), `appearance.json` (light or dark, language), `fan-wear.json` (when a fan's first week starts, after cleaning or replacing it), and a readable report, `calibration.html` and `calibration-*.txt`. Earlier versions kept it in `runs\` next to the program; the first start copies it over once and leaves the old folder as it was. To use another folder, set the environment variable `AUTOFANTIC_DATA`.
 
 ## Privacy
 
@@ -95,8 +96,8 @@ AuFantic installs no service and has no driver of its own. The PawnIO driver is 
 
 | | |
 |----|----|
-| ✅ Done | GitHub releases and updates in the app, dark mode, find fans, calibration while gaming, combining calibrations, presets, quietest mix, fans off at idle, window + tray icon, set-up in the window, a watchdog after crashes, an activity log, case fans that follow CPU and GPU, smoother curves, a monitor with history and warnings, BIOS fallback curves, extra quiet (away / night), game reports, cooling health, start with Windows, sleep handling |
-| 💡 Later | learning in the background during normal gaming, reacting to power before the temperature rises, a quieter GPU idle |
+| ✅ Done | GitHub releases and updates in the app, dark mode, find fans, calibration while gaming, combining calibrations, presets, quietest mix, fans off at idle, window + tray icon, set-up in the window, a watchdog after crashes, an activity log, case fans that follow CPU and GPU, smoother curves, a monitor with history and warnings, BIOS fallback curves, extra quiet (away / night), game reports, cooling health, start with Windows, sleep handling, curves improved from everyday use (one click) |
+| 💡 Later | suggesting better curves by itself once enough use has come together, reacting to power before the temperature rises, a quieter GPU idle |
 
 ## Build from source
 
@@ -157,7 +158,7 @@ Run in a terminal **as administrator**: `publish\autofantic-spike.exe <command>`
 * **It starts an old version after a restart:** there is a second copy of AuFantic in another folder, and *Start with Windows* still starts that one. Exit it and start the copy you want: from 0.1.9 on, *Start with Windows* follows the copy you start.
 * **Fans jump around or ignore the speed:** another fan tool (the mainboard's own app, Fan Control, Argus Monitor …) is still controlling them. The check on the Overview names the ones it knows. Close it or switch its fan control off.
 * **GPU fans never switch off at idle:** check the GPU's idle power on the Overview. Many cards draw 100 W or more at "idle" with several or high-refresh monitors, and then they get too warm without their fans.
-* **Something happened and you don't know why:** the *Activity* page (and `activity.log` in the data folder) lists every safety stop, sensor problem and fan switching off or on.
+* **Something happened and you don't know why:** the *Log* page (and `activity.log` in the data folder) lists every safety stop, sensor problem and fan switching off or on.
 
 ## License
 

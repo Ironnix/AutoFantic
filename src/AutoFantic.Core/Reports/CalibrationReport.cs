@@ -22,6 +22,14 @@ public static class CalibrationReport
         foreach (var source in result.Sources ?? [])
             text.AppendLine($"   {source}");
         text.AppendLine($"Highest load measured: CPU {topCpu:0} W, GPU {topGpu:0} W");
+        if (result.Use is { } use)
+        {
+            static string Extra(PartUse? part) => part is null ? "as calibrated"
+                : $"{part.Extra(part.From):+0.0;-0.0;0} °C at {part.From:0} W to {part.Extra(part.To):+0.0;-0.0;0} °C at {part.To:0} W";
+            text.AppendLine($"Everyday use counted in ({use.Minutes} settled minutes on {use.Days} days, up to {use.Found:dd.MM. HH:mm}):");
+            text.AppendLine($"   against the calibrated model: CPU {Extra(use.Cpu)}, GPU {Extra(use.Gpu)}");
+            text.AppendLine($"   the curves cover up to CPU {use.TopCpu:0} W, GPU {use.TopGpu:0} W");
+        }
         text.AppendLine();
 
         text.AppendLine("What each fan cools (from 100 % to its lowest speed, at the highest load)");
@@ -130,11 +138,15 @@ public static class CalibrationFiles
     public const string FansOff = "fans-off.json";
     public const string Curves = "curves.json";
 
+    /// <summary>What everyday use added to the latest calibration (use.json), if the user took it over; null otherwise, and after calibrating again.</summary>
+    public static UseCorrection? UseFor(string folder, MeasurementStore store) =>
+        UseCorrection.Load(Path.Combine(folder, UseCorrection.FileName)) is { } use && use.Fits(store) ? use : null;
+
     /// <summary>Null if there aren't enough stored runs for these fans.</summary>
     public static (CalibrationResult Result, string Report)? Recalculate(string folder, FanInventory inventory, MeasurementStore store, Preset preset,
         double ambient, FansOffResult? fansOff, bool fansOffFresh = false, IReadOnlyList<string>? skipped = null)
     {
-        var result = CalibrationCalculator.Calculate(store, inventory, preset.Profile, ambient, fansOff);
+        var result = CalibrationCalculator.Calculate(store, inventory, preset.Profile, ambient, fansOff, UseFor(folder, store));
         if (result is null)
             return null;
 

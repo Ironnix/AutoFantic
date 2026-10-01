@@ -750,6 +750,49 @@ internal sealed class AppController : IDisposable
     public IReadOnlyList<RunInsight> Runs() =>
         Inventory is not null ? CalibrationInsights.Runs(Store, Inventory.Groups(), Preset.Profile) : [];
 
+    // ── improving from everyday use ────────────────────────────────────────────────────
+
+    /// <summary>What <see cref="AnalyseUse"/> found, and the curves it would give.</summary>
+    /// <param name="Curves">The result worked out with it (same preset); null if there isn't enough use yet.</param>
+    /// <param name="Changes">Per fan group: the recommended curve now and the suggested one.</param>
+    public sealed record UseSuggestion(UseAnalysis Analysis, CalibrationResult? Curves, IReadOnlyList<CurveChange> Changes);
+
+    /// <summary>What everyday use added to the calibration, if the user took it over (<see cref="TakeOverUse"/>).</summary>
+    public UseCorrection? UseInUse => Recommended?.Use;
+
+    /// <summary>
+    /// Checks the curves against the history since the latest calibration (<see cref="UseLearning"/>)
+    /// and works them out again with what it shows. Only a suggestion: nothing changes until
+    /// <see cref="TakeOverUse"/>. Null before the first calibration. Reads a lot of history: call it off the window's thread.
+    /// </summary>
+    public UseSuggestion? AnalyseUse()
+    {
+        if (Recommended is not { } now || Inventory is not { } inventory || Store.Calibrations.Count == 0 || HealthReference is not { } reference)
+            return null;
+        var to = Loop.Last?.Time ?? DateTimeOffset.Now;
+        var from = UseLearning.From(to, reference);
+        var top = (Store.Calibrations.Max(c => c.TopCpu), Store.Calibrations.Max(c => c.TopGpu));
+        var analysis = UseLearning.Analyze(now, UseLearning.Minutes(Monitor.Store, now, from, to), reference, from, to, top);
+        var curves = analysis.Correction is { } use ? CalibrationCalculator.Calculate(Store, inventory, Preset.Profile, now.Ambient, FansOff, use) : null;
+        return new UseSuggestion(analysis, curves, curves is null ? [] : UseLearning.Compare(now, curves));
+    }
+
+    /// <summary>Uses the suggested curves: the correction is kept (use.json) and counted in whenever the curves are worked out, until the next calibration.</summary>
+    public void TakeOverUse(UseCorrection use)
+    {
+        use.Save(Path.Combine(RunsPath, UseCorrection.FileName));
+        if (Recalculate(Preset))
+            Log.Add(LogKind.Calibration, T($"The curves were improved from everyday use ({use.Minutes} minutes on {use.Days} days since the calibration)."));
+    }
+
+    /// <summary>Back to the curves as the calibrations alone give them.</summary>
+    public void DropUse()
+    {
+        File.Delete(Path.Combine(RunsPath, UseCorrection.FileName));
+        if (Recalculate(Preset))
+            Log.Add(LogKind.Calibration, T("Back to the calibration's curves: what everyday use added no longer counts."));
+    }
+
     // ── calibrating ────────────────────────────────────────────────────────────────────
 
     /// <summary>

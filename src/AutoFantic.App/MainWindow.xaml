@@ -39,7 +39,12 @@
                             <Grid>
                                 <Border x:Name="Pill" Width="3" Height="16" CornerRadius="2" HorizontalAlignment="Left" Margin="-12,0,0,0"
                                         Background="{DynamicResource AccentFillColorDefaultBrush}" Visibility="Collapsed" />
-                                <ContentPresenter VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- the tab's icon: a glyph of Windows' own icon font (Windows 11, else Windows 10's), given as the button's Tag -->
+                                    <TextBlock Text="{TemplateBinding Tag}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                                               Width="20" TextAlignment="Center" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                    <ContentPresenter VerticalAlignment="Center" />
+                                </StackPanel>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -123,16 +128,20 @@
                 </Viewbox>
                 <TextBlock Text="AuFantic" FontSize="20" FontWeight="SemiBold" />
             </StackPanel>
-            <TextBlock x:Name="SideStatus" DockPanel.Dock="Bottom" Style="{StaticResource Caption}" Margin="6,0" />
+            <TextBlock x:Name="SideStatus" DockPanel.Dock="Bottom" Style="{StaticResource Caption}" Margin="6,10,6,0" />
+            <!-- at the bottom: what is set up once or looked up now and then -->
+            <StackPanel DockPanel.Dock="Bottom">
+                <RadioButton x:Name="NavCalibration" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xEC4A;" Content="Calibration" />
+                <RadioButton x:Name="NavLog" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xE81C;" Content="Log" />
+                <RadioButton x:Name="NavSettings" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xE713;" Content="Settings" />
+            </StackPanel>
+            <!-- at the top: what is looked at every day -->
             <StackPanel>
-                <RadioButton x:Name="NavOverview" Style="{StaticResource Nav}" GroupName="nav" IsChecked="True" Content="Overview" />
-                <RadioButton x:Name="NavMonitor" Style="{StaticResource Nav}" GroupName="nav" Content="Monitor" />
-                <RadioButton x:Name="NavCurves" Style="{StaticResource Nav}" GroupName="nav" Content="Fan curves" />
-                <RadioButton x:Name="NavReports" Style="{StaticResource Nav}" GroupName="nav" Content="Reports" />
-                <RadioButton x:Name="NavHealth" Style="{StaticResource Nav}" GroupName="nav" Content="Cooling health" />
-                <RadioButton x:Name="NavCalibration" Style="{StaticResource Nav}" GroupName="nav" Content="Calibration" />
-                <RadioButton x:Name="NavLog" Style="{StaticResource Nav}" GroupName="nav" Content="Activity" />
-                <RadioButton x:Name="NavSettings" Style="{StaticResource Nav}" GroupName="nav" Content="Settings" />
+                <RadioButton x:Name="NavOverview" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xE80F;" IsChecked="True" Content="Overview" />
+                <RadioButton x:Name="NavMonitor" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xE9D9;" Content="Monitor" />
+                <RadioButton x:Name="NavCurves" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xE9D2;" Content="Fan curves" />
+                <RadioButton x:Name="NavReports" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xE9F9;" Content="Reports" />
+                <RadioButton x:Name="NavHealth" Style="{StaticResource Nav}" GroupName="nav" Tag="&#xE95E;" Content="Cooling health" />
             </StackPanel>
         </DockPanel>
 
@@ -266,7 +275,7 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Warnings" Style="{StaticResource CardTitle}" />
-                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12" Text="A message next to the clock and in Activity. The safety limits work on their own." />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12" Text="A message next to the clock and in the Log. The safety limits work on their own." />
                             <CheckBox x:Name="FanStoppedBox" Content="When a fan stands still although it should turn" Margin="0,0,0,10" />
                             <StackPanel x:Name="WarningRows" />
                             <Button x:Name="AddWarning" Content="Add a warning" Padding="14,6" HorizontalAlignment="Left" Margin="0,4,0,0" />
@@ -486,6 +495,33 @@
 
                     <!-- what a calibration found: only once there is one -->
                     <StackPanel x:Name="InsightCards">
+                    <!-- improve from everyday use: the history against the calibration, and the curves that would give -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Improve from everyday use" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                                       Text="AuFantic keeps every minute: how warm CPU and GPU were, at which power and which fan speeds. One click checks the curves against how the PC really ran since the calibration and suggests better ones. Nothing changes until you say so." />
+                            <TextBlock x:Name="UseInUseText" Style="{StaticResource Caption}" Margin="0,10,0,0" Visibility="Collapsed" />
+                            <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                                <Button x:Name="AnalyseUseButton" Content="Analyse my use" Style="{DynamicResource AccentButtonStyle}" Padding="18,9" MinWidth="170" />
+                                <Button x:Name="DropUseButton" Content="Back to the calibration's curves" Padding="18,9" Margin="10,0,0,0" Visibility="Collapsed" />
+                            </StackPanel>
+                            <StackPanel x:Name="UseResult" Margin="0,18,0,0" Visibility="Collapsed">
+                                <TextBlock x:Name="UseSummary" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <StackPanel x:Name="UseFindings" Margin="0,8,0,0" />
+                                <StackPanel x:Name="UseCurves" Visibility="Collapsed">
+                                    <TextBlock Style="{StaticResource Caption}" Margin="0,14,0,10"
+                                               Text="Each fan's curve: the suggested one as a solid line, the one in use now dashed." />
+                                    <UniformGrid x:Name="UseCharts" Columns="2" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button x:Name="TakeOverUseButton" Content="Use the new curves" Style="{DynamicResource AccentButtonStyle}" Padding="18,9" MinWidth="170" />
+                                        <Button x:Name="DiscardUseButton" Content="Keep the current ones" Padding="18,9" Margin="10,0,0,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Why these settings" Style="{StaticResource CardTitle}" />
@@ -524,14 +560,14 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- activity: what AuFantic did -->
+            <!-- log: what AuFantic did -->
             <Grid x:Name="LogPage" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition />
                 </Grid.RowDefinitions>
-                <TextBlock Text="Activity" Style="{StaticResource Heading}" />
+                <TextBlock Text="Log" Style="{StaticResource Heading}" />
                 <Grid Grid.Row="1" Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition />

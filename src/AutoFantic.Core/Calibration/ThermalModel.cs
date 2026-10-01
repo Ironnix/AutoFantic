@@ -69,8 +69,19 @@ public sealed class ThermalModel
         double r = c[0];
         for (int g = 0; g < GroupCount; g++)
             r += c[g + 1] * Basis(speeds[g]);
-        return Ambient + (IsCpu(component) ? cpuPower : gpuPower) * r;
+        return Ambient + (IsCpu(component) ? cpuPower : gpuPower) * r + (_use?.Extra(component, cpuPower, gpuPower) ?? 0);
     }
+
+    // what everyday use showed against the calibrations: added to every prediction
+    private UseCorrection? _use;
+
+    /// <summary>
+    /// The same model with what everyday use showed against the calibration on top
+    /// (<see cref="UseCorrection"/>): so many °C warmer or cooler at a given power. What each fan
+    /// does (its k) stays as measured.
+    /// </summary>
+    public ThermalModel With(UseCorrection use) =>
+        new(Ambient, GroupCount, _coefficients, Rms.ToDictionary(kv => kv.Key, kv => kv.Value)) { _use = use };
 
     /// <summary>A model from coefficients saved earlier (calibration.json), e.g. to explain a result.</summary>
     public static ThermalModel FromCoefficients(double ambient, int groups, IReadOnlyDictionary<Component, double[]> coefficients, IReadOnlyDictionary<Component, double>? rms = null) =>

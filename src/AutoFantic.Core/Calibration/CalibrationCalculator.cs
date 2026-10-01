@@ -15,18 +15,22 @@ public static class CalibrationCalculator
     private static readonly double[] LoadShares = [0, 0.33, 0.66, 1, 1.3];
 
     /// <summary>The result, or null if fewer than three stored runs match these fans.</summary>
-    public static CalibrationResult? Calculate(MeasurementStore store, FanInventory inventory, Profile profile, double ambient, FansOffResult? fansOff)
+    /// <param name="use">What everyday use showed against the calibrations, to count in (a warmer room, heat
+    /// that gets out worse or better, heavier loads than any calibration saw); null = the calibrations alone.</param>
+    public static CalibrationResult? Calculate(MeasurementStore store, FanInventory inventory, Profile profile, double ambient, FansOffResult? fansOff, UseCorrection? use = null)
     {
         var groups = inventory.Groups().ToList();
         var observations = store.ObservationsFor(groups);
         if (observations.Count < 3 || store.Calibrations.Count == 0)
             return null;
 
-        var model = ThermalModel.Fit(observations, ambient, groups.Count);
+        var measured = ThermalModel.Fit(observations, ambient, groups.Count);
+        var model = use is null ? measured : measured.With(use);
 
         // load levels: idle up to the highest CPU and the highest GPU load any calibration saw (worst
-        // case: both at once), then 30 % beyond for anything heavier
-        double topCpu = store.Calibrations.Max(c => c.TopCpu), topGpu = store.Calibrations.Max(c => c.TopGpu);
+        // case: both at once), or everyday use if that was heavier, then 30 % beyond for anything heavier still
+        double topCpu = Math.Max(store.Calibrations.Max(c => c.TopCpu), use?.TopCpu ?? 0);
+        double topGpu = Math.Max(store.Calibrations.Max(c => c.TopGpu), use?.TopGpu ?? 0);
         double lowCpu = store.Calibrations.Select(c => c.IdleCpu).OfType<double>().DefaultIfEmpty(fansOff?.CpuPower ?? topCpu * 0.2).Min();
         double lowGpu = store.Calibrations.Select(c => c.IdleGpu).OfType<double>().DefaultIfEmpty(fansOff?.GpuPower ?? topGpu * 0.2).Min();
         var loads = LoadShares.Select(f => (lowCpu + (topCpu - lowCpu) * f, lowGpu + (topGpu - lowGpu) * f)).ToList();
@@ -46,8 +50,8 @@ public static class CalibrationCalculator
         var sources = store.Calibrations.Select(c => $"{c.Time:dd.MM. HH:mm} · {c.Load} · {c.Runs} runs").ToList();
         return new CalibrationResult(
             DateTimeOffset.Now, profile.Name, ambient, calibrated, table,
-            model.Components.ToDictionary(c => c, c => model.Coefficients(c).ToArray()),
-            stopCpu, stopGpu, model.Rms, sources, CalibrationResult.CurrentVersion);
+            measured.Components.ToDictionary(c => c, c => measured.Coefficients(c).ToArray()),
+            stopCpu, stopGpu, measured.Rms, sources, CalibrationResult.CurrentVersion, use);
     }
 
     /// <summary>What a group cools (at the highest load), the temperature it follows, its curve and when it's off.</summary>

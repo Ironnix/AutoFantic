@@ -36,6 +36,9 @@ public sealed record LoadRow(
 /// <param name="Rms">How far the model is off from the measurements, °C per temperature.</param>
 /// <param name="Sources">The calibrations the result is built from, e.g. "28.09. 22:26 Bodycam".</param>
 /// <param name="Version">The rules the curves were made with (<see cref="CurrentVersion"/>); 0 = before versions existed.</param>
+/// <param name="Ambient">The room temperature given at the calibration.</param>
+/// <param name="Model">The model as the calibrations measured it. The table and the curves also count in <paramref name="Use"/>.</param>
+/// <param name="Use">What everyday use added to the calibrations, if the user took it over; null = the calibrations alone.</param>
 public sealed record CalibrationResult(
     DateTimeOffset Created,
     string Profile,
@@ -47,8 +50,16 @@ public sealed record CalibrationResult(
     double StopGpuWatts,
     IReadOnlyDictionary<Component, double>? Rms = null,
     IReadOnlyList<string>? Sources = null,
-    int Version = 0)
+    int Version = 0,
+    UseCorrection? Use = null)
 {
+    /// <summary>The model the table and the curves were worked out with: the calibrated one, with <see cref="Use"/> on top.</summary>
+    public ThermalModel ModelInUse()
+    {
+        var calibrated = ThermalModel.FromCoefficients(Ambient, Groups.Count, Model, Rms);
+        return Use is null ? calibrated : calibrated.With(Use);
+    }
+
     /// <summary>
     /// Raised whenever the way curves are made changes, so a result from before is worked out again
     /// from the stored measurements. 1: case fans follow the warmer of CPU and GPU, curves no steeper

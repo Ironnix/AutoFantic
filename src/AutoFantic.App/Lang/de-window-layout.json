@@ -5,7 +5,7 @@
   "Reports": "Berichte",
   "Cooling health": "Kühlzustand",
   "Calibration": "Kalibrierung",
-  "Activity": "Aktivität",
+  "Log": "Protokoll",
   "Settings": "Einstellungen",
   "Check again": "Erneut prüfen",
   "AuFantic controls your fans": "AuFantic steuert deine Lüfter",
@@ -25,7 +25,7 @@
   "Power": "Leistung",
   "Values": "Werte",
   "Warnings": "Warnungen",
-  "A message next to the clock and in Activity. The safety limits work on their own.": "Eine Meldung neben der Uhr und unter Aktivität. Die Sicherheitsgrenzen wirken unabhängig davon.",
+  "A message next to the clock and in the Log. The safety limits work on their own.": "Eine Meldung neben der Uhr und im Protokoll. Die Sicherheitsgrenzen wirken unabhängig davon.",
   "When a fan stands still although it should turn": "Wenn ein Lüfter stillsteht, obwohl er sich drehen sollte",
   "Add a warning": "Warnung hinzufügen",
   "By game": "Nach Spiel",
@@ -97,5 +97,12 @@
   "AuFantic": "AuFantic",
   "English": "English",
   "Deutsch": "Deutsch",
-  "–": "–"
+  "–": "–",
+  "Improve from everyday use": "Aus dem Alltag verbessern",
+  "AuFantic keeps every minute: how warm CPU and GPU were, at which power and which fan speeds. One click checks the curves against how the PC really ran since the calibration and suggests better ones. Nothing changes until you say so.": "AuFantic speichert jede Minute: wie warm CPU und GPU waren, bei welcher Leistung und welchen Lüfterdrehzahlen. Ein Klick prüft die Kurven daran, wie der PC seit der Kalibrierung wirklich lief, und schlägt bessere vor. Es ändert sich nichts, bis du es sagst.",
+  "Analyse my use": "Meine Nutzung auswerten",
+  "Back to the calibration's curves": "Zurück zu den Kurven der Kalibrierung",
+  "Each fan's curve: the suggested one as a solid line, the one in use now dashed.": "Die Kurve jedes Lüfters: die vorgeschlagene als durchgezogene Linie, die jetzt aktive gestrichelt.",
+  "Use the new curves": "Die neuen Kurven verwenden",
+  "Keep the current ones": "Die jetzigen behalten"
 }

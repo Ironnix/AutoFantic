@@ -83,7 +83,7 @@ public static class CalibrationInsights
         if (groups.Count != result.Groups.Count || result.Model.Count == 0)
             return [];
 
-        var model = ThermalModel.FromCoefficients(result.Ambient, groups.Count, result.Model, result.Rms);
+        var model = result.ModelInUse();
         var insights = new List<LevelInsight>();
         foreach (var row in result.Table)
         {

@@ -33,7 +33,7 @@ namespace AutoFantic.App;
 /// The AuFantic window: what the fans do right now (Overview), the history of temperatures,
 /// power and fans with the user's warnings (Monitor), their curves to look at and to set (Fan curves),
 /// the game sessions (Reports), whether the cooling got worse (Cooling health), calibrating and why the settings are what they are (Calibration), what
-/// AuFantic did (Activity), and the few settings plus developer tools. Before the first
+/// AuFantic did (Log), and the few settings plus developer tools. Before the first
 /// calibration the Calibration page is the set-up (checks, find my fans, calibrate) and there are
 /// no curves yet. Everything it changes goes through <see cref="AppController"/>.
 /// </summary>
@@ -56,7 +56,7 @@ public partial class MainWindow : Window
     // loudness choices for "Your fans": label → dB correction
     private static readonly (string Label, double Db)[] LoudnessChoices = [("quiet", -5), ("normal", 0), ("loud", 5)];
 
-    // how many log entries the Activity page shows
+    // how many entries the Log page shows
     private const int LogShown = 300;
 
     // the monitor's time ranges; its charts refresh every few seconds while it's shown
@@ -155,6 +155,14 @@ public partial class MainWindow : Window
 
         StartCalibrationButton.Click += (_, _) => StartCalibration();
         StopCalibrationButton.Click += (_, _) => _app.StopCalibration();
+        AnalyseUseButton.Click += (_, _) => AnalyseUse();
+        TakeOverUseButton.Click += (_, _) =>
+        {
+            if (_useSuggestion?.Analysis.Correction is { } use)
+                _app.TakeOverUse(use); // the curves change, which also clears the suggestion (BuildUse)
+        };
+        DiscardUseButton.Click += (_, _) => ShowUse(null);
+        DropUseButton.Click += (_, _) => _app.DropUse();
         RoomTemp.Text = (_app.Recommended?.Ambient ?? 22).ToString("0", CultureInfo.InvariantCulture);
         SetupFindFans.Click += (_, _) => FindFans();
         SetupRecheck.Click += (_, _) => Recheck();
@@ -615,6 +623,7 @@ public partial class MainWindow : Window
         CalibrationLive.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         CalibrationLogText.Visibility = _log.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         FindFansButton.IsEnabled = !running;
+        AnalyseUseButton.IsEnabled = !running;
         SetupFindFans.IsEnabled = !running;
         foreach (var (button, _) in _presets)
             button.IsEnabled = _app.CanSwitchPreset && !running;
@@ -797,12 +806,134 @@ public partial class MainWindow : Window
             "AuFantic", MessageBoxButton.OK, outcome.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
     });
 
-    /// <summary>"Why these settings", "Your fans", "What each fan cools" and "Runs".</summary>
+    // ── improve from everyday use ──────────────────────────────────────────────────────
+
+    /// <summary>What the last "Analyse my use" suggested and hasn't been taken over or discarded yet.</summary>
+    private AppController.UseSuggestion? _useSuggestion;
+
+    /// <summary>Reads the history in the background (a month of minutes) and shows what it suggests.</summary>
+    private async void AnalyseUse()
+    {
+        AnalyseUseButton.IsEnabled = false;
+        ShowUse(null);
+        UseSummary.Text = T("Reading the history …");
+        UseResult.Visibility = Visibility.Visible;
+        try
+        {
+            ShowUse(await Task.Run(_app.AnalyseUse));
+        }
+        catch (Exception ex)
+        {
+            UseSummary.Text = T($"The history couldn't be analysed: {ex.Message}");
+        }
+        finally
+        {
+            AnalyseUseButton.IsEnabled = !_app.Calibrating;
+        }
+    }
+
+    /// <summary>Whether a correction from everyday use is counted in; a suggestion made for other curves is gone.</summary>
+    private void BuildUse()
+    {
+        ShowUse(null);
+        var use = _app.UseInUse;
+        UseInUseText.Visibility = DropUseButton.Visibility = use is null ? Visibility.Collapsed : Visibility.Visible;
+        if (use is not null)
+            UseInUseText.Text = T($"In use: what {use.Minutes} minutes on {use.Days} days showed up to {use.Found.ToLocalTime():dd.MM. HH:mm}. It counts until the next calibration.");
+    }
+
+    /// <summary>The findings in plain words and, if the curves would change, each fan's curve now and as suggested; null clears it.</summary>
+    private void ShowUse(AppController.UseSuggestion? suggestion)
+    {
+        _useSuggestion = suggestion;
+        UseFindings.Children.Clear();
+        UseCharts.Children.Clear();
+        UseCurves.Visibility = Visibility.Collapsed;
+        UseResult.Visibility = suggestion is null ? Visibility.Collapsed : Visibility.Visible;
+        if (suggestion is null)
+            return;
+
+        var analysis = suggestion.Analysis;
+        string since = analysis.From.ToLocalTime().ToString("dd.MM. HH:mm", CultureInfo.InvariantCulture);
+        if (analysis.Correction is not { } use || suggestion.Curves is null)
+        {
+            UseSummary.Text = T($"Not enough yet: {analysis.Minutes} of the {UseLearning.MinMinutes} minutes it takes.");
+            Finding(T($"Only minutes since the last calibration ({since}) count in which every fan turned and the load had been the same for a few minutes. Use the PC as usual and try again in a few days."));
+            return;
+        }
+
+        bool same = UseLearning.Same(suggestion.Changes);
+        UseSummary.Text = same
+            ? T("Your curves already fit how the PC really runs. Nothing to improve.")
+            : T("Everyday use suggests other curves.");
+        Finding(T($"From {use.Minutes} minutes on {use.Days} days since the calibration ({since}):"));
+        Finding(Part("CPU", use.Cpu));
+        Finding(Part("GPU", use.Gpu));
+        var (topCpu, topGpu) = (_app.Store.Calibrations.Max(c => c.TopCpu), _app.Store.Calibrations.Max(c => c.TopGpu));
+        Finding(use.TopCpu > topCpu || use.TopGpu > topGpu
+            ? T($"Loads: the PC ran at up to CPU {use.TopCpu:0} W and GPU {use.TopGpu:0} W, more than any calibration saw (CPU {topCpu:0} W, GPU {topGpu:0} W). The new curves cover that.")
+            : T($"Loads: nothing heavier than the calibrations saw (CPU {topCpu:0} W, GPU {topGpu:0} W)."));
+        if (same)
+            return;
+
+        for (int g = 0; g < suggestion.Changes.Count; g++)
+            UseCharts.Children.Add(UseChart(g, suggestion.Changes[g]));
+        UseCurves.Visibility = Visibility.Visible;
+
+        void Finding(string text) =>
+            UseFindings.Children.Add(new TextBlock { Text = text, FontSize = 13.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4) });
+
+        // "CPU: 10 °C warmer at 33 W, 6 °C warmer at 78 W than the calibration expects."
+        static string Part(string name, PartUse? part)
+        {
+            if (part is null)
+                return T($"{name}: runs as the calibrations expect.");
+            static string Warmer(double v) => v >= 0 ? T($"{v:0} °C warmer") : T($"{-v:0} °C cooler");
+            return T($"{name}: {Warmer(part.Extra(part.From))} at {part.From:0} W, {Warmer(part.Extra(part.To))} at {part.To:0} W than the calibrations expect.");
+        }
+    }
+
+    /// <summary>One fan group's curve as suggested (solid) over the one in use now (dashed), with what changes in words.</summary>
+    private FrameworkElement UseChart(int group, CurveChange change)
+    {
+        string what = Math.Abs(change.Largest) < UseLearning.Unchanged ? T("unchanged")
+            : change.Largest > 0 ? T($"up to {change.Largest:0} % faster (at {change.At:0} °C)")
+            : T($"up to {-change.Largest:0} % slower (at {change.At:0} °C)");
+        if (change.OffAtIdleNow != change.OffAtIdleNew)
+            what += " · " + (change.OffAtIdleNew ? T("off at idle") : T("no longer off at idle"));
+        if (_app.IsBios(group))
+            what += " · " + T("controlled by the BIOS");
+        else if (_app.IsCustom(group))
+            what += " · " + T("your own curve stays in use");
+
+        var title = new StackPanel { Orientation = Orientation.Horizontal };
+        title.Children.Add(Dot(group));
+        title.Children.Add(new TextBlock { Text = change.Name, FontSize = 14, FontWeight = FontWeights.SemiBold });
+
+        var chart = new CurveEditor
+        {
+            Height = 190,
+            Margin = new Thickness(0, 6, 0, 0),
+            Color = Palette[group % Palette.Length],
+            TemperatureLabel = Capitalize(CalibrationInsights.FollowsName(change.Follows)),
+            IsHitTestVisible = false, // to look at, not to drag
+        };
+        chart.SetCurves(change.New, change.Now);
+
+        var panel = new StackPanel { Margin = new Thickness(0, 0, 16, 18) };
+        panel.Children.Add(title);
+        panel.Children.Add(new TextBlock { Text = what, Style = (Style)FindResource("Caption"), Margin = new Thickness(18, 2, 0, 0) });
+        panel.Children.Add(chart);
+        return panel;
+    }
+
+    /// <summary>"Improve from everyday use", "Why these settings", "Your fans", "What each fan cools" and "Runs".</summary>
     private void BuildInsights()
     {
         _building = true;
         try
         {
+            BuildUse();
             BuildWhy();
             BuildLoudness();
             BuildEffects();
