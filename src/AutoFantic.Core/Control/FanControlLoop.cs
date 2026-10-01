@@ -70,6 +70,7 @@ public sealed class FanControlLoop : IDisposable
     private bool _paused;
     private IReadOnlySet<string> _needed;
     private string? _quiet;
+    private bool _reactEarly;
     private string? _monitorError;
     private Thread? _thread;
     private CancellationTokenSource? _stop;
@@ -138,6 +139,21 @@ public sealed class FanControlLoop : IDisposable
         }
     }
 
+    /// <summary>The fans speed up as soon as the graphics card's power jumps (<see cref="CurveController.ReactEarly"/>). Takes effect on the next step.</summary>
+    public bool ReactEarly
+    {
+        get => _reactEarly;
+        set
+        {
+            lock (_lock)
+            {
+                _reactEarly = value;
+                if (_controller is not null)
+                    _controller.ReactEarly = value;
+            }
+        }
+    }
+
     /// <summary>
     /// True while nothing is going on (low load, cool): then the loop reads every
     /// <see cref="RelaxedInterval"/> instead of every second. Anything else and it's back to every second.
@@ -183,7 +199,7 @@ public sealed class FanControlLoop : IDisposable
                 _session.RestoreDefault(channel);
             _calibration = calibration;
             _channels = channels;
-            _controller = new CurveController(calibration, minSpinning, canStop) { Quiet = _quiet };
+            _controller = new CurveController(calibration, minSpinning, canStop) { Quiet = _quiet, ReactEarly = _reactEarly };
             if (State == LoopState.NotSetUp)
                 State = LoopState.Running;
         }

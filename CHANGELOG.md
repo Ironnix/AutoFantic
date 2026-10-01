@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3] - 01.10.2026
+
+### New
+
+- **Fans on two outputs can run together** (*Calibration → Your fans*): a CPU cooler with two fans is often plugged into two headers (CPU Fan 1 and CPU Fan 2), and each got its own tab and its own curve. Under the list of your fans you can now pick the two and click *Run together*. From then on they are one group, like the fans of a graphics card: one tab under *Fan curves*, one curve, always the same speed, for example "CPU Fan 1 + 2 (#0, #1)". *Take apart* undoes it. Nothing has to be calibrated again: the curve is worked out from what was already measured for each of them, and the Monitor's charts, the cooling health and the worn fan detection carry on from the history of both. A curve you drew yourself for one of them is not used while they run together; it is back when you take them apart. It works for any mainboard fans, not for a graphics card's fans (those always stay with their card).
+- **React early** (*Overview*, under *Extra quiet*; off until you switch it on): normally the fans follow the temperature, so they only speed up once the graphics card is already warm. With *Speed up as soon as the graphics card's power jumps* ticked, the card's fans and the case fans speed up the moment the card draws much more power (a game starts, a heavy scene), by about as much as the calibration says that power will warm it. The lead fades over a minute or two as the real temperature catches up. On the simulated PC the fans are up about 20 seconds earlier and the GPU is about 3 °C cooler one minute into a game; where it settles in the end is the same. The price: the fans change speed a little more often. The small ups and downs of a running game are ignored, a falling power never speeds anything up, the CPU's fans are left out (a CPU's power jumps all the time), and *Extra quiet* goes first. While a fan is ahead of its curve, *Fan curves* says so next to its speed.
+- **The last 7 days at a glance** (*Reports*, at the top): one line like "12 h 05 min played · GPU up to 78 °C · cooling OK". Under it: how many sessions and which game most, whether that is more or less than the week before, the highest GPU hotspot and CPU temperature, and what *Cooling health* says in one sentence.
+
 ## [0.2.2] - 01.10.2026
 
 ### Fixed

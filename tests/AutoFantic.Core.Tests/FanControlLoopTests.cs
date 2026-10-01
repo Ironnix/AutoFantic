@@ -106,6 +106,36 @@ public class FanControlLoopTests
         Assert.Equal(LoopState.Running, status.State);
     }
 
+    /// <summary>The simulated PC idles for 5 minutes, then a game starts. Returns the GPU fan's speed 20 s into the game and the GPU's temperature a minute in.</summary>
+    private static (double FanAfter20s, double GpuAfter60s) GameStarts(bool reactEarly)
+    {
+        var clock = new FakeClock();
+        var pc = new SimulatedPc(load: elapsed => elapsed < TimeSpan.FromMinutes(5) ? SimLoad.Idle : SimLoad.Game, clock: () => clock.Now);
+        // the GPU fan's curve rises from 45 °C; the model is what a calibration of this PC finds (GPU: 0.08 + 1.5 / case fans + 5 / GPU fan)
+        var calibration = Calibration(55, 45, 40) with
+        {
+            Groups = [.. Calibration(55, 45, 40).Groups.Select((g, i) => i == 2 ? g with { Curve = [new(30, 40), new(45, 40), new(70, 100)] } : g)],
+            Model = new Dictionary<Component, double[]> { [Component.GpuCore] = [0.08, 0, 1.5, 5] },
+        };
+        using var loop = new FanControlLoop(pc, calibration, [30, 30, 40]) { ReactEarly = reactEarly };
+
+        Run(loop, clock, 300);
+        double fan = Run(loop, clock, 20).Fans[2].Percent!.Value;
+        return (fan, Run(loop, clock, 40).GpuTemp!.Value);
+    }
+
+    [Fact]
+    public void Reacting_early_has_the_gpu_fan_up_before_the_gpu_is_warm_and_keeps_it_cooler()
+    {
+        var late = GameStarts(reactEarly: false);
+        var early = GameStarts(reactEarly: true);
+
+        // 20 s into the game the GPU is still below where its curve starts to rise: only the early one is on its way up
+        Assert.InRange(late.FanAfter20s, 40, 45);
+        Assert.InRange(early.FanAfter20s, 55, 100);
+        Assert.True(early.GpuAfter60s < late.GpuAfter60s - 1, $"a minute in: {early.GpuAfter60s:0.0} °C with, {late.GpuAfter60s:0.0} °C without");
+    }
+
     [Fact]
     public void A_fan_given_to_the_bios_is_handed_back_and_left_alone_while_the_others_follow_their_curves()
     {

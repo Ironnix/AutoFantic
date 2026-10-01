@@ -234,6 +234,8 @@ internal sealed class AppController : IDisposable
         };
         app.UseFansInMonitor();
         app.Quiet = QuietSettings.Load(Path.Combine(runs, QuietSettings.FileName));
+        app.Control = ControlSettings.Load(Path.Combine(runs, ControlSettings.FileName));
+        loop.ReactEarly = app.Control.ReactEarly;
         app.Updates = UpdateSettings.Load(Path.Combine(runs, UpdateSettings.FileName));
         app.Appearance = AppearanceSettings.Load(Path.Combine(runs, AppearanceSettings.FileName));
         app.Compare = CompareSettings.Load(Path.Combine(runs, CompareSettings.FileName));
@@ -287,6 +289,23 @@ internal sealed class AppController : IDisposable
             "night" => T($"Extra quiet for the night (until {Quiet.NightTo}). Every fan at its slowest, the ones that can stop off, while it stays cool."),
             _ => T("Normal again: the fans follow their curves."),
         });
+    }
+
+    // ── reacting early ─────────────────────────────────────────────────────────────────
+
+    /// <summary>How the fan control behaves beyond the curves (reacting to the graphics card's power before its temperature).</summary>
+    public ControlSettings Control { get; private set; } = new();
+
+    public void SaveControl(ControlSettings control)
+    {
+        bool changed = control.ReactEarly != Control.ReactEarly;
+        Control = control;
+        control.Save(Path.Combine(RunsPath, ControlSettings.FileName));
+        Loop.ReactEarly = control.ReactEarly;
+        if (changed)
+            Log.Add(LogKind.Fans, control.ReactEarly
+                ? T("React early is on: the fans speed up as soon as the graphics card's power jumps, before it gets warm.")
+                : T("React early is off: the fans follow the temperature only."));
     }
 
     // ── appearance ─────────────────────────────────────────────────────────────────────
@@ -546,6 +565,21 @@ internal sealed class AppController : IDisposable
         return CoolingHealth.Analyze(calibration, CoolingHealth.Minutes(Monitor.Store, calibration, to.AddDays(-7), to));
     }
 
+    /// <summary>
+    /// The cooling health in one number, as the Cooling health page judges it: °C the warmer of CPU
+    /// and GPU runs at full load in the last 7 days, against the first week after the calibration
+    /// (<see cref="CoolingHealth.Fine"/>, <see cref="CoolingHealth.Clean"/>). Null while there is nothing to compare yet.
+    /// </summary>
+    public double? CoolingWarmer()
+    {
+        if (Recommended is not { } calibration || HealthReference is not { } reference)
+            return null;
+        var changes = CoolingHealth.SinceCalibration(Monitor.Store.HealthDays());
+        var first = CoolingHealth.Compare(changes, reference, DateOnly.FromDateTime(DateTime.Now), CoolingHealth.Rise(calibration))
+            .FirstOrDefault(c => c.Label == CoolingHealth.AfterCalibration);
+        return first is null ? null : Math.Max(first.Cpu ?? 0, first.Gpu ?? 0);
+    }
+
     /// <summary>Steady minutes in the last 7 days (to say how far the first answer is).</summary>
     public int HealthMinutes()
     {
@@ -759,6 +793,53 @@ internal sealed class AppController : IDisposable
         Inventory = Inventory!.WithCools(groups[group], cools);
         Inventory.Save(Path.Combine(RunsPath, CalibrationFiles.Inventory));
         Recalculate(Preset);
+    }
+
+    /// <summary>
+    /// The user says two groups' fans belong together (two mainboard headers for the two fans of one
+    /// CPU cooler): from now on they are one group with one curve, worked out again from the stored
+    /// measurements. False if they can't be put together (a graphics card's fans stay with their card).
+    /// </summary>
+    public bool RunTogether(int group, int with)
+    {
+        var groups = Inventory?.Groups();
+        if (groups is null || Calibrating || group == with || Math.Max(group, with) >= groups.Count || groups[group].IsGpu || groups[with].IsGpu)
+            return false;
+        Regroup(Inventory!.RunTogether(groups[group], groups[with]));
+        Log.Add(LogKind.Fans, T($"{groups[group].Name} and {groups[with].Name} run together from now on, with one curve."));
+        return true;
+    }
+
+    /// <summary>Takes fans the user put together apart again: every output has its own curve.</summary>
+    public void RunApart(int group)
+    {
+        var groups = Inventory?.Groups();
+        if (groups is null || Calibrating || group >= groups.Count || groups[group].Headers.Count < 2 || groups[group].IsGpu)
+            return;
+        Regroup(Inventory!.Apart(groups[group]));
+        Log.Add(LogKind.Fans, T($"{groups[group].Name}: every output has its own curve again."));
+    }
+
+    /// <summary>Other groups from the same fans: their history carries on, and the curves are worked out again for them.</summary>
+    private void Regroup(FanInventory inventory)
+    {
+        var before = Inventory?.Groups() ?? [];
+        Inventory = inventory;
+        Inventory.Save(Path.Combine(RunsPath, CalibrationFiles.Inventory));
+
+        foreach (var group in inventory.Groups().Where(g => before.All(b => MeasurementStore.Key(b) != MeasurementStore.Key(g))))
+        {
+            var from = before.Where(b => b.Headers.Any(h => group.Headers.Any(now => now.ControlId == h.ControlId))).ToList();
+            foreach (var kind in new[] { SeriesKind.FanPercent, SeriesKind.FanRpm })
+                Monitor.Store.Carry(from.Select(b => HistoryRecorder.FanSeries(b, kind).Key), HistoryRecorder.FanSeries(group, kind));
+        }
+        UseFansInMonitor();
+
+        if (Recalculate(Preset))
+            return;
+        if (Recommended is not null)
+            Log.Add(LogKind.Warning, T("The curves couldn't be worked out again for these fans: calibrate again. Until then the fans keep the curves they had."));
+        CurvesChanged?.Invoke(); // before the first calibration only the list of fans changed
     }
 
     private bool Recalculate(Preset preset)

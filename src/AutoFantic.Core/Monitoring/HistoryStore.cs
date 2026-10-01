@@ -179,6 +179,32 @@ public sealed class HistoryStore : IDisposable
         }
     }
 
+    /// <summary>
+    /// Gives <paramref name="to"/> the history of other series where it has none of its own: fans
+    /// that run together from now on carry on from what each of them did before (their average),
+    /// and fans taken apart again from what they did together. So the charts, the cooling health and
+    /// the worn fan detection don't start from nothing. Series that were never recorded are skipped.
+    /// </summary>
+    public void Carry(IEnumerable<string> from, Series to)
+    {
+        lock (_lock)
+        {
+            if (_disposed)
+                return;
+            var sources = from.Where(key => key != to.Key && _series.ContainsKey(key)).Select(key => _series[key].Id).ToList();
+            if (sources.Count == 0)
+                return;
+            WriteOpen();
+            using var copy = Command($"""
+                INSERT OR IGNORE INTO points (tier, series, t, avg, min, max)
+                SELECT tier, $to, t, AVG(avg), MIN(min), MAX(max) FROM points
+                WHERE series IN ({string.Join(", ", sources)}) GROUP BY tier, t
+                """);
+            copy.Parameters.AddWithValue("$to", IdOf(to));
+            copy.ExecuteNonQuery();
+        }
+    }
+
     /// <summary>A session that ended; its values are worked out here from the history (average and highest of every series).</summary>
     public GameSession AddSession(string program, DateTimeOffset start, DateTimeOffset end, string preset)
     {

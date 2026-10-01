@@ -13,6 +13,8 @@ public sealed record RpmPoint(float Percent, float Rpm);
 /// <param name="LoudnessDb">The user's correction for how loud these fans are: −5 quiet, 0 normal, +5 loud.</param>
 /// <param name="Cools">What the user says these fans cool, where the calibration got it wrong: <see cref="Component.Cpu"/> (the CPU
 /// cooler), <see cref="Component.GpuCore"/> (the graphics card) or <see cref="Component.Warmest"/> (case fans: both). Null = as measured.</param>
+/// <param name="Together">Mainboard outputs with the same number above 0 run as one group, at one speed and with one curve: the
+/// user says they belong together (the two fans of one CPU cooler on two headers). 0 = on its own.</param>
 public sealed record FanHeader(
     int Channel,
     string ControlId,
@@ -23,7 +25,8 @@ public sealed record FanHeader(
     bool IsPump,
     int FanCount = 1,
     double LoudnessDb = 0,
-    Component? Cools = null)
+    Component? Cools = null,
+    int Together = 0)
 {
     internal const float StoppedBelowRpm = 50;
 
@@ -82,8 +85,9 @@ public sealed record FanHeader(
 }
 
 /// <summary>
-/// A set of fan outputs that always run at the same speed: all fans of one graphics card, or a
-/// single mainboard header (which may itself drive several fans through a splitter or hub).
+/// A set of fan outputs that always run at the same speed: all fans of one graphics card, a
+/// single mainboard header (which may itself drive several fans through a splitter or hub), or the
+/// mainboard headers the user put together (<see cref="FanHeader.Together"/>).
 /// </summary>
 public sealed record FanGroup(string Name, IReadOnlyList<FanHeader> Headers)
 {
@@ -121,12 +125,15 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
     /// <summary>Headers with a fan on them, pumps excluded: the only ones AuFantic ever experiments with.</summary>
     public IEnumerable<FanHeader> Usable => Headers.Where(h => h.Connected && !h.IsPump);
 
-    /// <summary>GPU fans of one card form one group; every mainboard header is its own group.</summary>
+    /// <summary>
+    /// GPU fans of one card form one group. Every mainboard header is its own group, except the ones
+    /// the user put together (<see cref="RunTogether"/>): those are one, where the first of them was.
+    /// </summary>
     public IReadOnlyList<FanGroup> Groups()
     {
         var groups = new List<FanGroup>();
-        foreach (var header in Usable.Where(h => !h.IsGpu))
-            groups.Add(new FanGroup($"{header.DisplayName} (#{header.Channel})", [header]));
+        foreach (var set in Usable.Where(h => !h.IsGpu).GroupBy(h => h.Together > 0 ? h.Together : -1 - h.Channel))
+            groups.Add(new FanGroup(MainboardName([.. set]), [.. set]));
         foreach (var card in Usable.Where(h => h.IsGpu).GroupBy(h => h.Hardware))
         {
             var headers = card.ToList();
@@ -134,6 +141,37 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
             groups.Add(new FanGroup(name, headers));
         }
         return groups;
+    }
+
+    // "CPU Fan 1 (#0)"; together "CPU Fan 1 + 2 (#0, #1)": the words the names start with alike are said once
+    private static string MainboardName(IReadOnlyList<FanHeader> headers)
+    {
+        var names = headers.Select(h => h.DisplayName).ToList();
+        string shared = names[0][..(names[0].LastIndexOf(' ') + 1)];
+        if (shared.Length > 0 && names.All(n => n.Length > shared.Length && n.StartsWith(shared, StringComparison.Ordinal)))
+            names = [names[0], .. names.Skip(1).Select(n => n[shared.Length..])];
+        return $"{string.Join(" + ", names)} ({string.Join(", ", headers.Select(h => $"#{h.Channel}"))})";
+    }
+
+    /// <summary>
+    /// A copy in which the fans of these two groups run as one: one speed, one curve (two mainboard
+    /// headers for the two fans of one CPU cooler). A graphics card's fans stay with their card:
+    /// with one of those, nothing changes.
+    /// </summary>
+    public FanInventory RunTogether(FanGroup a, FanGroup b)
+    {
+        if (a.IsGpu || b.IsGpu)
+            return this;
+        var channels = a.Headers.Concat(b.Headers).Select(h => h.Channel).ToHashSet();
+        int set = Headers.Max(h => h.Together) + 1;
+        return this with { Headers = Headers.Select(h => channels.Contains(h.Channel) ? h with { Together = set } : h).ToList() };
+    }
+
+    /// <summary>A copy in which every output of this group is on its own again (the opposite of <see cref="RunTogether"/>).</summary>
+    public FanInventory Apart(FanGroup group)
+    {
+        var channels = group.Headers.Select(h => h.Channel).ToHashSet();
+        return this with { Headers = Headers.Select(h => channels.Contains(h.Channel) ? h with { Together = 0 } : h).ToList() };
     }
 
     /// <summary>
@@ -196,7 +234,7 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
 
     /// <summary>
     /// A copy that keeps what was known before the fans were found again: what the user said about
-    /// each output's fans (how many, how loud, what they cool) and, for the same fan, what was measured at speeds
+    /// each output's fans (how many, how loud, what they cool, which run together) and, for the same fan, what was measured at speeds
     /// "Find my fans" didn't test this time (0 % while the PC was busy, a standstill seen during a calibration).
     /// </summary>
     public FanInventory KeepingKnown(FanInventory? before)
@@ -209,6 +247,7 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
                 FanCount = old.FanCount,
                 LoudnessDb = old.LoudnessDb,
                 Cools = old.Cools,
+                Together = old.Together,
                 Rpm = h.RpmSensorId is null || h.RpmSensorId != old.RpmSensorId
                     ? h.Rpm
                     : h.Rpm.Concat(old.Rpm.Where(p => h.Rpm.All(now => now.Percent != p.Percent))).OrderBy(p => p.Percent).ToList(),

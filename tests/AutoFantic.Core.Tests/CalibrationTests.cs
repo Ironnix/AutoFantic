@@ -202,6 +202,56 @@ public class CalibrationTests
     }
 
     [Fact]
+    public void Mainboard_outputs_the_user_put_together_are_one_group()
+    {
+        var pc = RalfsPc();
+        var together = pc.RunTogether(pc.Groups()[0], pc.Groups()[1]);
+
+        Assert.Equal(["CPU Fan + Pump Fan header (#0, #1)", "System Fan #4 (#5)", "GPU fans (#8, #9)"], together.Groups().Select(g => g.Name));
+        Assert.Equal("/lpc/nct6686d/0/control/0+/lpc/nct6686d/0/control/1", MeasurementStore.Key(together.Groups()[0]));
+        Assert.False(together.Groups()[0].IsGpu);
+
+        // names that start alike say it once
+        var named = together with { Headers = together.Headers.Select(h => h.Channel <= 1 ? h with { Name = $"CPU Fan {h.Channel + 1}" } : h).ToList() };
+        Assert.Equal("CPU Fan 1 + 2 (#0, #1)", named.Groups()[0].Name);
+
+        // a graphics card's fans stay with their card
+        Assert.Same(pc, pc.RunTogether(pc.Groups()[0], pc.Groups()[3]));
+
+        // a third output joins the two; finding the fans again keeps it; taking apart gives every output its own group back
+        var all = together.RunTogether(together.Groups()[1], together.Groups()[0]);
+        Assert.Equal([0, 1, 5], all.Groups()[0].Headers.Select(h => h.Channel));
+        Assert.Equal(together.Groups().Select(g => g.Name), pc.KeepingKnown(together).Groups().Select(g => g.Name));
+        Assert.Equal(pc.Groups().Select(g => g.Name), all.Apart(all.Groups()[0]).Groups().Select(g => g.Name));
+    }
+
+    [Fact]
+    public void Fans_put_together_get_one_curve_from_what_was_measured_for_each()
+    {
+        var pc = RalfsPc();
+        var separate = pc.Groups();
+        // truth: the two fans of the CPU cooler cool the CPU alike, the case fans both, the GPU fans the GPU
+        double[] cpu = [0.15, 4, 4, 2, 0], gpu = [0.05, 0, 0, 2, 5];
+        double At(double[] k, double[] speeds, double watts) => 22 + watts * (k[0] + speeds.Select((s, g) => k[g + 1] * ThermalModel.Basis(s)).Sum());
+        var runs = CalibrationPlan.Runs(separate).Select(speeds => new StoredRun(DateTimeOffset.Now, 22,
+            separate.Select(MeasurementStore.Key).Zip(speeds).ToDictionary(p => p.First, p => p.Second), 120, 300,
+            new Dictionary<Component, double> { [Component.Cpu] = At(cpu, speeds, 120), [Component.GpuCore] = At(gpu, speeds, 300) })).ToList();
+        var store = MeasurementStore.Empty.Add(new StoredCalibration(DateTimeOffset.Now, "game", 22, 120, 300, 35, 60, runs.Count), runs);
+        var profile = Preset.For("balanced").Profile;
+
+        var apart = CalibrationCalculator.Calculate(store, pc, profile, 22, null)!;
+        var together = CalibrationCalculator.Calculate(store, pc.RunTogether(separate[0], separate[1]), profile, 22, null)!;
+
+        Assert.Equal(3, together.Groups.Count);
+        Assert.Equal(["/lpc/nct6686d/0/control/0", "/lpc/nct6686d/0/control/1"], together.Groups[0].ControlIds);
+        Assert.Equal(Component.Cpu, together.Groups[0].Follows);
+        // together they do for the CPU what the two did apart
+        double sum = apart.Groups[0].CpuEffect + apart.Groups[1].CpuEffect;
+        Assert.InRange(together.Groups[0].CpuEffect, 0.9 * sum, 1.1 * sum);
+        Assert.Equal(apart.Groups[2].Follows, together.Groups[1].Follows); // the case fans: as before
+    }
+
+    [Fact]
     public void Inventory_survives_a_round_trip_through_json()
     {
         string path = Path.Combine(Path.GetTempPath(), $"fans-{Guid.NewGuid():N}.json");

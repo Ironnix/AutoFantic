@@ -62,15 +62,16 @@ public static class CalibrationInsights
     /// <summary>Every stored run for these fans, newest calibration first, with its bottleneck under this profile.</summary>
     public static IReadOnlyList<RunInsight> Runs(MeasurementStore store, IReadOnlyList<FanGroup> groups, Profile profile)
     {
-        var keys = groups.Select(MeasurementStore.Key).ToList();
         return store.Runs
-            .Where(r => keys.All(r.Speeds.ContainsKey))
-            .OrderByDescending(r => r.Time)
-            .Select(r =>
+            .Select(r => (Run: r, Speeds: MeasurementStore.SpeedsIn(r, groups, out _)))
+            .Where(x => x.Speeds is not null)
+            .OrderByDescending(x => x.Run.Time)
+            .Select(x =>
             {
+                var r = x.Run;
                 var (bottleneck, headroom) = Tightest(r.Final, profile);
                 string source = store.Calibrations.LastOrDefault(c => c.Time == r.Time)?.Load ?? "calibration";
-                var speeds = groups.Select((g, i) => (g.Name, r.Speeds[keys[i]])).ToList();
+                var speeds = groups.Select((g, i) => (g.Name, x.Speeds![i])).ToList();
                 return new RunInsight(r.Time, source, r.Weight < 1, speeds, r.CpuPower, r.GpuPower, r.Final, bottleneck, headroom);
             })
             .ToList();

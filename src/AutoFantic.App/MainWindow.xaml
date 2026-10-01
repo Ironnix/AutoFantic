@@ -205,6 +205,12 @@
                                     <TextBox x:Name="QuietTo" Width="64" Margin="6,0,0,0" VerticalContentAlignment="Center" />
                                 </StackPanel>
                             </StackPanel>
+                            <StackPanel x:Name="EarlyPanel" Margin="0,18,0,0">
+                                <TextBlock Text="React early" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,10"
+                                           Text="When the graphics card suddenly draws much more power (a game starts, a heavy scene), its fans and the case fans speed up right away instead of waiting for the temperature to rise. Fewer temperature spikes; the fans change speed a little more often." />
+                                <CheckBox x:Name="ReactEarlyBox" Content="Speed up as soon as the graphics card's power jumps" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -276,6 +282,14 @@
                 <StackPanel>
                     <TextBlock Text="Reports" Style="{StaticResource Heading}" />
                     <TextBlock x:Name="ReportsNow" Style="{StaticResource Caption}" Margin="0,0,0,12" />
+                    <!-- the week in one line: how long was played, how warm it got, how the cooling does -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="The last 7 days" Style="{StaticResource CardTitle}" />
+                            <TextBlock x:Name="WeekHeadline" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            <TextBlock x:Name="WeekDetail" Style="{StaticResource Caption}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="By game" Style="{StaticResource CardTitle}" />
@@ -523,6 +537,7 @@
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
                                        Text="How many fans are on each output, how loud they are and what they cool. Quiet fans are sped up first. A graphics card often has fewer outputs than fans (three fans on two outputs, two of them wired together): choose the number of fans you see on it. What a fan cools is measured by the calibration; if that came out wrong, choose it yourself." />
                             <StackPanel x:Name="LoudnessRows" />
+                            <StackPanel x:Name="TogetherRows" />
                         </StackPanel>
                     </Border>
 

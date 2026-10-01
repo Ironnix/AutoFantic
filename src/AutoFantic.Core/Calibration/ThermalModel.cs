@@ -61,6 +61,13 @@ public sealed class ThermalModel
 
     public static double Basis(double speed) => 1 / (Math.Max(0, speed) + Offset);
 
+    /// <summary>
+    /// The one speed that cools like fans of the same kind at these different speeds: the speed whose
+    /// <see cref="Basis"/> is the mean of theirs. Exact if each of them cools the same amount.
+    /// </summary>
+    public static double SameCooling(IReadOnlyCollection<double> speeds) =>
+        Math.Max(0, 1 / speeds.Average(Basis) - Offset);
+
     public IReadOnlyList<double> Coefficients(Component component) => _coefficients[component];
 
     public double Predict(Component component, IReadOnlyList<double> speeds, double cpuPower, double gpuPower)

@@ -78,6 +78,68 @@ public class CurveControllerTests
         Assert.InRange(down[0], 80, 95); // −1 %/s at most
     }
 
+    // what a calibration measured: the GPU warms by 0.05 + 6 / (its fans' % + 10) °C per watt, 0.17 °C/W at 40 %
+    private static CurveController WithModel(bool reactEarly) => new(
+        Calibration() with { Model = new Dictionary<Component, double[]> { [Component.GpuCore] = [0.05, 0, 6] } }, [30, 40]) { ReactEarly = reactEarly };
+
+    [Fact]
+    public void Reacting_early_speeds_the_gpu_fans_up_when_its_power_jumps_before_it_gets_warm()
+    {
+        var c = WithModel(reactEarly: true);
+        var t = T0;
+        var steady = Hold(c, ref t, 300, cpu: 50, gpu: 50, cpuW: 80, gpuW: 100);
+        Assert.Equal(40, steady[1], 1);
+
+        // a game starts: 200 W more will warm the GPU by some 30 °C, but its temperature hasn't moved yet
+        var early = Hold(c, ref t, 10, cpu: 50, gpu: 50, cpuW: 80, gpuW: 300);
+        Assert.InRange(early[1], 48, 53); // the curve read 15 °C ahead: 65 °C → 52 %
+        Assert.Equal(FanNote.Early, c.Status[1].Note);
+        Assert.Equal(50, c.Status[1].Temperature!.Value, 1); // what is shown stays the real temperature
+        Assert.Equal(steady[0], early[0], 1); // the CPU fan follows the CPU: nothing to do with it
+
+        // the power stays up and the temperature didn't follow after all: the lead fades, back to the curve
+        var later = Hold(c, ref t, 600, cpu: 50, gpu: 50, cpuW: 80, gpuW: 300);
+        Assert.Equal(40, later[1], 1);
+        Assert.NotEqual(FanNote.Early, c.Status[1].Note);
+    }
+
+    [Fact]
+    public void Reacting_early_is_off_unless_switched_on_and_never_overrides_quiet_mode()
+    {
+        var off = WithModel(reactEarly: false);
+        var t = T0;
+        Hold(off, ref t, 300, cpu: 50, gpu: 50, cpuW: 80, gpuW: 100);
+        Assert.Equal(40, Hold(off, ref t, 10, cpu: 50, gpu: 50, cpuW: 80, gpuW: 300)[1], 1);
+
+        var quiet = WithModel(reactEarly: true);
+        quiet.Quiet = "night";
+        t = T0;
+        Hold(quiet, ref t, 300, cpu: 50, gpu: 50, cpuW: 80, gpuW: 100);
+        Assert.Equal(40, Hold(quiet, ref t, 10, cpu: 50, gpu: 50, cpuW: 80, gpuW: 300)[1], 1);
+
+        // a result from before the model was kept: nothing to tell watts from degrees with, so it follows the temperature only
+        var old = new CurveController(Calibration(), [30, 40]) { ReactEarly = true };
+        t = T0;
+        Hold(old, ref t, 300, cpu: 50, gpu: 50, cpuW: 80, gpuW: 100);
+        Assert.Equal(40, Hold(old, ref t, 10, cpu: 50, gpu: 50, cpuW: 80, gpuW: 300)[1], 1);
+    }
+
+    [Fact]
+    public void Reacting_early_ignores_the_ups_and_downs_of_a_running_game()
+    {
+        var c = WithModel(reactEarly: true);
+        var t = T0;
+        Hold(c, ref t, 300, cpu: 50, gpu: 62.5, cpuW: 80, gpuW: 260);
+
+        // ±10 W every few seconds, and a drop: never a reason to speed up
+        for (int i = 0; i < 20; i++)
+        {
+            double[] output = Hold(c, ref t, 5, cpu: 50, gpu: 62.5, cpuW: 80, gpuW: i % 2 == 0 ? 270 : 250);
+            Assert.Equal(50, output[1], 0.5);
+        }
+        Assert.Equal(50, Hold(c, ref t, 30, cpu: 50, gpu: 62.5, cpuW: 80, gpuW: 120)[1], 0.5);
+    }
+
     [Fact]
     public void Switches_off_at_idle_and_back_on_with_a_kick_when_load_comes()
     {

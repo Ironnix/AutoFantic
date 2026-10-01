@@ -46,14 +46,44 @@ public sealed record MeasurementStore(IReadOnlyList<StoredCalibration> Calibrati
     public MeasurementStore Add(StoredCalibration calibration, IEnumerable<StoredRun> runs) =>
         new([.. Calibrations, calibration], [.. Runs, .. runs]);
 
-    /// <summary>The runs that cover exactly these groups, as observations in their order.</summary>
-    public IReadOnlyList<Observation> ObservationsFor(IReadOnlyList<FanGroup> groups)
-    {
-        var keys = groups.Select(Key).ToList();
-        return Runs
-            .Where(r => keys.All(r.Speeds.ContainsKey))
-            .Select(r => new Observation(keys.Select(k => r.Speeds[k]).ToList(), r.CpuPower, r.GpuPower, r.Final, r.Ambient, r.Weight))
+    // a run in which fans that run together now had different speeds counts this much of its weight
+    private const double MixedWeight = 0.5;
+
+    /// <summary>The runs that cover these groups, as observations in their order (<see cref="SpeedsIn"/>).</summary>
+    public IReadOnlyList<Observation> ObservationsFor(IReadOnlyList<FanGroup> groups) =>
+        Runs
+            .Select(r => SpeedsIn(r, groups, out bool exact) is { } speeds
+                ? new Observation(speeds, r.CpuPower, r.GpuPower, r.Final, r.Ambient, exact ? r.Weight : r.Weight * MixedWeight)
+                : null)
+            .OfType<Observation>()
             .ToList();
+
+    /// <summary>
+    /// The speed each of these groups ran at in a run; null if the run doesn't cover every one of
+    /// their outputs. A run from before the user put outputs together, or took them apart, still
+    /// counts: every output is looked up on its own. Outputs that run together now but had different
+    /// speeds in the run (<paramref name="exact"/> is false) count as the one speed that cools the
+    /// same (<see cref="ThermalModel.SameCooling"/>), which is right for like fans on one cooler.
+    /// </summary>
+    public static IReadOnlyList<double>? SpeedsIn(StoredRun run, IReadOnlyList<FanGroup> groups, out bool exact)
+    {
+        exact = true;
+        var byOutput = new Dictionary<string, double>();
+        foreach (var (key, speed) in run.Speeds)
+            foreach (string id in key.Split('+'))
+                byOutput[id] = speed;
+
+        var speeds = new List<double>(groups.Count);
+        foreach (var group in groups)
+        {
+            if (!group.Headers.All(h => byOutput.ContainsKey(h.ControlId)))
+                return null;
+            var each = group.Headers.Select(h => byOutput[h.ControlId]).ToList();
+            bool same = each.All(s => s == each[0]);
+            exact &= same;
+            speeds.Add(same ? each[0] : Math.Round(ThermalModel.SameCooling(each)));
+        }
+        return speeds;
     }
 
     public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, Json));

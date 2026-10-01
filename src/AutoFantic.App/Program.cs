@@ -26,6 +26,7 @@ namespace AutoFantic.App;
 ///   --selftest-calibration          a whole calibration with the built-in load, as the window starts it (the first one finds the fans too)
 ///   --selftest-update releases.json an update the way the window does it, from a local copy of GitHub's list of releases
 ///                                   (URL): check, download, install, restart into the new version (which runs --selftest)
+///   --selftest-together             the first two mainboard fans put together and taken apart again, as "Your fans" does it (needs a calibration)
 ///   --screenshot file.png [--page overview|monitor|curves|calibration|log|settings] [--height 2000] [--full]   render the window off-screen to a PNG
 /// </summary>
 internal static class Program
@@ -59,7 +60,7 @@ internal static class Program
     private static int RunApp(string[] args)
     {
         bool simulate = args.Contains("--simulate");
-        bool selfTest = args.Contains("--selftest") || args.Contains("--selftest-calibration") || args.Contains("--selftest-update");
+        bool selfTest = args.Contains("--selftest") || args.Contains("--selftest-calibration") || args.Contains("--selftest-update") || args.Contains("--selftest-together");
         string? screenshot = Option(args, "--screenshot");
         bool quiet = selfTest || screenshot is not null;
 
@@ -180,6 +181,23 @@ internal static class Program
                         code = 6;
                     }
                     wpf.Shutdown(code);
+                });
+            }
+            else if (args.Contains("--selftest-together"))
+            {
+                // two mainboard fans put together, then taken apart again: each time the fan control
+                // must be running with the new groups a few seconds later
+                wpf.Dispatcher.BeginInvoke(() =>
+                {
+                    int groups = app.Effective?.Groups.Count ?? 0;
+                    bool Runs(int count) => app.Effective?.Groups.Count == count && app.Loop.Last is { State: Core.Control.LoopState.Running } status && status.Fans.Count == count;
+                    bool together = app.RunTogether(0, 1);
+                    After(TimeSpan.FromSeconds(3), () =>
+                    {
+                        bool one = together && Runs(groups - 1) && app.Effective!.Groups[0].ControlIds.Count == 2;
+                        app.RunApart(0);
+                        After(TimeSpan.FromSeconds(3), () => wpf.Shutdown(one && Runs(groups) ? 0 : 7));
+                    });
                 });
             }
             else if (selfTest)

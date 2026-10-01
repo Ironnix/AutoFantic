@@ -54,6 +54,37 @@ public class MeasurementStoreTests
     }
 
     [Fact]
+    public void Runs_from_before_two_fans_were_put_together_still_count()
+    {
+        var second = new FanHeader(1, "c1", "CPU Fan 2", "board", "f1", [new(30, 520), new(100, 1490)], false);
+        var both = new FanGroup("CPU Fan 1 + 2 (#0, #1)", [CpuFan.Headers[0], second]);
+        StoredRun Run(Dictionary<string, double> speeds) =>
+            new(T0, 22, speeds, 100, 200, new Dictionary<Component, double> { [Component.Cpu] = 70, [Component.GpuCore] = 60 });
+        var store = MeasurementStore.Empty.Add(new StoredCalibration(T0, "game", 22, 100, 200, null, null, 3),
+        [
+            Run(new() { ["c0"] = 100, ["c1"] = 100, ["g1"] = 65 }),
+            Run(new() { ["c0"] = 35, ["c1"] = 35, ["g1"] = 65 }),
+            Run(new() { ["c0"] = 100, ["c1"] = 35, ["g1"] = 65 }),
+        ]);
+
+        var observations = store.ObservationsFor([both, GpuFans]);
+
+        Assert.Equal([100, 65], observations[0].Speeds);
+        Assert.Equal([35, 65], observations[1].Speeds);
+        Assert.All(observations.Take(2), o => Assert.Equal(1, o.Weight));
+        // one at 100 %, one at 35 %: the speed that cools the same lies between them, nearer the slow one, and counts half
+        Assert.Equal(54, observations[2].Speeds[0]);
+        Assert.Equal(0.5, observations[2].Weight);
+
+        // the other way round: measured together, taken apart later
+        var together = MeasurementStore.Empty.Add(new StoredCalibration(T0, "game", 22, 100, 200, null, null, 1), [Run(new() { ["c0+c1"] = 65, ["g1"] = 40 })]);
+        var apart = together.ObservationsFor([CpuFan, new FanGroup("CPU Fan 2 (#1)", [second]), GpuFans]);
+
+        Assert.Equal([65, 65, 40], apart.Single().Speeds);
+        Assert.Equal(1, apart.Single().Weight);
+    }
+
+    [Fact]
     public void An_old_result_is_imported_without_the_settings_that_were_too_hot()
     {
         var old = new CalibrationResult(T0, "Max 90", 25,

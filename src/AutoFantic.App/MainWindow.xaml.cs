@@ -176,6 +176,7 @@ public partial class MainWindow : Window
         FanStoppedBox.Click += (_, _) => SaveWarnings();
         QuietAway.Click += (_, _) => SaveQuiet();
         QuietNight.Click += (_, _) => SaveQuiet();
+        ReactEarlyBox.Click += (_, _) => _app.SaveControl(_app.Control with { ReactEarly = ReactEarlyBox.IsChecked == true });
         foreach (var box in new[] { QuietAwayMinutes, QuietFrom, QuietTo })
             box.LostFocus += (_, _) => SaveQuiet();
         AddWarning.Click += (_, _) =>
@@ -328,6 +329,7 @@ public partial class MainWindow : Window
         NavCurves.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         NavHealth.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         QuietPanel.IsEnabled = setUp;
+        EarlyPanel.IsEnabled = setUp;
         NavCalibration.Content = setUp ? T("Calibration") : T("Set up");
         CalibrationHeading.Text = setUp ? T("Calibration") : T("Set up AuFantic");
         SetupCards.Visibility = setUp ? Visibility.Collapsed : Visibility.Visible;
@@ -468,6 +470,7 @@ public partial class MainWindow : Window
         { Note: FanNote.Off } => T("idle and cool"),
         { Note: FanNote.Starting } => T("starting up (short push)"),
         { Note: FanNote.Quiet } => T("extra quiet"),
+        { Note: FanNote.Early } => T("ahead of the temperature: the graphics card's power jumped"),
         _ => null,
     };
 
@@ -627,6 +630,7 @@ public partial class MainWindow : Window
         CalibrationLive.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         CalibrationLogText.Visibility = _log.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         FindFansButton.IsEnabled = !running;
+        TogetherRows.IsEnabled = !running;
         AnalyseUseButton.IsEnabled = !running;
         SetupFindFans.IsEnabled = !running;
         foreach (var (button, _) in _presets)
@@ -1030,6 +1034,72 @@ public partial class MainWindow : Window
             Place(row, cools, 4);
             LoudnessRows.Children.Add(row);
         }
+        BuildTogether(groups);
+    }
+
+    /// <summary>
+    /// Under "Your fans": mainboard fans on different outputs that belong together (the two fans of
+    /// one CPU cooler) can run as one group with one curve, like a graphics card's fans, and be taken apart again.
+    /// </summary>
+    private void BuildTogether(IReadOnlyList<FanGroup> groups)
+    {
+        TogetherRows.Children.Clear();
+        TogetherRows.IsEnabled = !_app.Calibrating;
+        var mainboard = groups.Select((group, index) => (Group: group, Index: index)).Where(x => !x.Group.IsGpu).ToList();
+        var together = mainboard.Where(x => x.Group.Headers.Count > 1).ToList();
+        if (mainboard.Count < 2 && together.Count == 0)
+            return;
+
+        TogetherRows.Children.Add(new TextBlock
+        {
+            Text = T("Fans on two outputs that belong together, like the two fans of one CPU cooler? Let them run together: one speed and one curve, like the fans of a graphics card."),
+            Style = (Style)FindResource("Caption"),
+            Margin = new Thickness(0, 8, 0, 10),
+        });
+
+        foreach (var (group, index) in together)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            row.Children.Add(Dot(index));
+            row.Children.Add(new TextBlock { Text = T($"{group.Name}: these run together."), FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) });
+            var apart = new Button { Content = T("Take apart"), Padding = new Thickness(14, 6, 14, 6) };
+            apart.Click += (_, _) =>
+            {
+                Cursor = System.Windows.Input.Cursors.Wait;
+                _app.RunApart(index);
+                Cursor = null;
+            };
+            row.Children.Add(apart);
+            TogetherRows.Children.Add(row);
+        }
+
+        if (mainboard.Count < 2)
+            return;
+        var pick = new StackPanel { Orientation = Orientation.Horizontal };
+        var first = new ComboBox { Width = 210 };
+        var second = new ComboBox { Width = 210 };
+        foreach (var (group, _) in mainboard)
+        {
+            first.Items.Add(group.Name);
+            second.Items.Add(group.Name);
+        }
+        first.SelectedIndex = 0;
+        second.SelectedIndex = 1;
+        var join = new Button { Content = T("Run together"), Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(10, 0, 0, 0) };
+        void Chosen() => join.IsEnabled = first.SelectedIndex >= 0 && second.SelectedIndex >= 0 && first.SelectedIndex != second.SelectedIndex;
+        first.SelectionChanged += (_, _) => Chosen();
+        second.SelectionChanged += (_, _) => Chosen();
+        join.Click += (_, _) =>
+        {
+            Cursor = System.Windows.Input.Cursors.Wait;
+            _app.RunTogether(mainboard[first.SelectedIndex].Index, mainboard[second.SelectedIndex].Index);
+            Cursor = null;
+        };
+        pick.Children.Add(first);
+        pick.Children.Add(new TextBlock { Text = T("and"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0) });
+        pick.Children.Add(second);
+        pick.Children.Add(join);
+        TogetherRows.Children.Add(pick);
     }
 
     private void BuildEffects()
@@ -1402,6 +1472,7 @@ public partial class MainWindow : Window
         QuietNight.IsChecked = quiet.AtNight;
         QuietFrom.Text = quiet.NightFrom;
         QuietTo.Text = quiet.NightTo;
+        ReactEarlyBox.IsChecked = _app.Control.ReactEarly;
     }
 
     private void SaveQuiet()
@@ -1428,9 +1499,55 @@ public partial class MainWindow : Window
             : "";
     }
 
+    /// <summary>The last 7 days in one line ("12 h 05 min played · GPU up to 78 °C · cooling OK") and a few words more under it.</summary>
+    private void BuildWeek()
+    {
+        var week = WeekSummary.Of(_app.Monitor.Store, _app.Loop.Last?.Time ?? DateTimeOffset.Now);
+        static string Length(TimeSpan t) => t.TotalHours >= 1 ? $"{(int)t.TotalHours} h {t.Minutes:00} min" : $"{t.TotalMinutes:0} min";
+
+        // the same verdict as on the Cooling health page, in two words
+        double? warmer = _app.CoolingWarmer();
+        var (cooling, coolingDetail) = warmer switch
+        {
+            null => (null, T("Cooling health has nothing to compare with yet.")),
+            < CoolingHealth.Fine => (T("cooling OK"), T("Cooling as good as after the calibration.")),
+            < CoolingHealth.Clean => (T("cooling a bit warmer"), T("A bit warmer than after the calibration: check the dust filters when you get to it.")),
+            _ => (T("cooling clearly warmer"), T("Clearly warmer than after the calibration: clean the dust filters, fans and heatsinks, then calibrate again.")),
+        };
+        var headline = new List<string> { week.Sessions == 0 ? T("Nothing played") : T($"{Length(week.Played)} played") };
+        if (week.GpuMax is { } gpu)
+            headline.Add(T($"GPU up to {gpu:0} °C"));
+        if (cooling is not null)
+            headline.Add(cooling);
+        WeekHeadline.Text = string.Join(" · ", headline);
+
+        var detail = new List<string>();
+        if (week.Sessions > 0)
+        {
+            string played = week.Sessions == 1 ? T($"1 session: {week.Mostly}") : T($"{week.Sessions} sessions, mostly {week.Mostly}");
+            if (week.PlayedBefore is { } before)
+            {
+                var more = week.Played - before;
+                played += more.Duration() < TimeSpan.FromMinutes(10) ? T(", about as long as the week before")
+                    : more > TimeSpan.Zero ? T($", {Length(more)} more than the week before")
+                    : T($", {Length(more.Duration())} less than the week before");
+            }
+            detail.Add(played + ".");
+        }
+        else if (week.PlayedBefore is { } before && before > TimeSpan.Zero)
+            detail.Add(T($"The week before: {Length(before)} played."));
+        if (week.HotspotMax is { } hotspot && week.CpuMax is { } cpu)
+            detail.Add(T($"GPU hotspot up to {hotspot:0} °C, CPU up to {cpu:0} °C."));
+        else if (week.CpuMax is { } cpuOnly)
+            detail.Add(T($"CPU up to {cpuOnly:0} °C."));
+        detail.Add(coolingDetail);
+        WeekDetail.Text = string.Join(" ", detail);
+    }
+
     private void BuildReports()
     {
         UpdateReportsNow();
+        BuildWeek();
         var sessions = _app.Monitor.Store.Sessions();
         static double? Avg(GameSession s, Series x) => s.Stats.TryGetValue(x.Key, out var v) ? v.Avg : null;
         static double? Max(GameSession s, Series x) => s.Stats.TryGetValue(x.Key, out var v) ? v.Max : null;
