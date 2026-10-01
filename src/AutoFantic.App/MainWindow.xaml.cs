@@ -425,7 +425,6 @@ public partial class MainWindow : Window
                 _ => (Running, T("AuFantic controls your fans"), T("They follow your curves. The safety limits always stay on.")),
             };
         StateDot.Fill = brush;
-        LogoDot.Fill = brush;
         StateTitle.Text = title;
         StateDetail.Text = detail;
         PauseButton.Content = !_app.IsSetUp ? T("Set up") : _app.UserPaused ? T("Resume") : T("Pause");

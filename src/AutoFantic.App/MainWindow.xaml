@@ -60,14 +60,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- one blade of the logo's fan; the logo turns it three times around the middle -->
-        <Style x:Key="LogoBlade" TargetType="Path">
-            <Setter Property="Data" Value="M 126 102 C 116 84 108 62 110 42 A 88 88 0 0 1 202 80 C 182 86 164 98 152 116 Z" />
-            <Setter Property="Fill" Value="White" />
-            <Setter Property="Stroke" Value="White" />
-            <Setter Property="StrokeThickness" Value="8" />
-            <Setter Property="StrokeLineJoin" Value="Round" />
-        </Style>
         <!-- presets and fan chips: toggles shaped like cards -->
         <Style x:Key="Choice" TargetType="ToggleButton">
             <Setter Property="Cursor" Value="Hand" />
@@ -104,30 +96,8 @@
             <ColumnDefinition />
         </Grid.ColumnDefinitions>
 
-        <!-- sidebar -->
+        <!-- sidebar (no logo or name here: the title bar right above has both) -->
         <DockPanel Grid.Column="0" Margin="16,24,8,16">
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,0,28">
-                <!-- the logo (assets\logo.svg, a 256 box), its square in the state's colour like the icon next to the clock -->
-                <Viewbox Width="26" Height="26" Margin="0,0,10,0" VerticalAlignment="Center">
-                    <Canvas Width="256" Height="256">
-                        <Rectangle x:Name="LogoDot" Canvas.Left="8" Canvas.Top="8" Width="240" Height="240" RadiusX="56" RadiusY="56" Fill="#1baf7a" />
-                        <Path Style="{StaticResource LogoBlade}" />
-                        <Path Style="{StaticResource LogoBlade}">
-                            <Path.RenderTransform>
-                                <RotateTransform Angle="120" CenterX="128" CenterY="128" />
-                            </Path.RenderTransform>
-                        </Path>
-                        <Path Style="{StaticResource LogoBlade}">
-                            <Path.RenderTransform>
-                                <RotateTransform Angle="240" CenterX="128" CenterY="128" />
-                            </Path.RenderTransform>
-                        </Path>
-                        <Ellipse Canvas.Left="104" Canvas.Top="104" Width="48" Height="48" Fill="White" />
-                        <Ellipse Canvas.Left="118" Canvas.Top="118" Width="20" Height="20" Fill="{Binding Fill, ElementName=LogoDot}" />
-                    </Canvas>
-                </Viewbox>
-                <TextBlock Text="AuFantic" FontSize="20" FontWeight="SemiBold" />
-            </StackPanel>
             <TextBlock x:Name="SideStatus" DockPanel.Dock="Bottom" Style="{StaticResource Caption}" Margin="6,10,6,0" />
             <!-- at the bottom: what is set up once or looked up now and then -->
             <StackPanel DockPanel.Dock="Bottom">

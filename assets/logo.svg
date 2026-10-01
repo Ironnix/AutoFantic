@@ -2,7 +2,7 @@
   <title>AuFantic</title>
   <!-- A fan with three blades on a rounded square, from blue (cool) to green (all is well).
        src/AutoFantic.App/AuFantic.ico is this drawing at 16 to 256 pixels; the icon next to the clock
-       and the one in the window draw the same blade (TrayIcon.cs, MainWindow.xaml) in the state's colour. -->
+       draws the same blade (TrayIcon.cs) on a square in the state's colour. -->
   <defs>
     <linearGradient id="cool" gradientUnits="userSpaceOnUse" x1="8" y1="8" x2="248" y2="248">
       <stop offset="0" stop-color="#2a78d6" />
