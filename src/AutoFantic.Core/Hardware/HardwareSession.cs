@@ -13,7 +13,7 @@ public sealed class HardwareSession : FanSession
     private readonly Computer _computer;
     private readonly List<FanChannel> _channels;
     private readonly Dictionary<FanChannel, IHardware> _hardwareOf = [];
-    private readonly Dictionary<ISensor, (string Id, string Hardware, string HardwareType, SensorKind Kind)> _names = [];
+    private readonly Dictionary<ISensor, (string Id, string Hardware, string HardwareType, SensorKind Kind, string Name)> _names = [];
 
     // the last focused read: which sensors, and the hardware that has to be read for them
     private IReadOnlySet<string>? _focus;
@@ -30,6 +30,7 @@ public sealed class HardwareSession : FanSession
             IsControllerEnabled = true,
         };
         _computer.Open();
+        Board = ReadBoard();
         Update();
 
         _channels = [];
@@ -42,6 +43,22 @@ public sealed class HardwareSession : FanSession
     }
 
     public override IReadOnlyList<FanChannel> Channels => _channels;
+
+    public override string? Board { get; }
+
+    private string? ReadBoard()
+    {
+        try
+        {
+            var board = _computer.SMBios.Board;
+            return BoardNames.Describe(board?.ManufacturerName, board?.ProductName);
+        }
+        catch (Exception)
+        {
+            // a BIOS table the library can't read: the outputs keep the library's names
+            return null;
+        }
+    }
 
     /// <summary>True if the mainboard has fan outputs the library can drive (a supported fan chip, the PawnIO driver loaded).</summary>
     public bool HasMainboardFans => _hardwareOf.Values.Any(h => h.HardwareType == HardwareType.SuperIO);
@@ -115,27 +132,32 @@ public sealed class HardwareSession : FanSession
     private SensorReading Reading(ISensor s)
     {
         var n = Names(s);
-        return new SensorReading(n.Id, n.Hardware, n.HardwareType, n.Kind, s.Name, s.Value);
+        return new SensorReading(n.Id, n.Hardware, n.HardwareType, n.Kind, n.Name, s.Value);
     }
 
-    // a sensor's id and names never change: made once, not every second (less garbage)
-    private (string Id, string Hardware, string HardwareType, SensorKind Kind) Names(ISensor s)
+    // a sensor's id and names never change: made once, not every second (less garbage).
+    // The name is the header's on this mainboard where that is known (BoardNames), else the library's.
+    private (string Id, string Hardware, string HardwareType, SensorKind Kind, string Name) Names(ISensor s)
     {
         if (!_names.TryGetValue(s, out var n))
-            _names[s] = n = (s.Identifier.ToString(), s.Hardware.Name, s.Hardware.HardwareType.ToString(), ToKind(s.SensorType));
+        {
+            string id = s.Identifier.ToString();
+            _names[s] = n = (id, s.Hardware.Name, s.Hardware.HardwareType.ToString(), ToKind(s.SensorType), BoardNames.For(Board, id, s.Name));
+        }
         return n;
     }
 
     protected override void DisposeCore() => _computer.Close();
 
-    private static FanChannel ToChannel(int index, ISensor sensor)
+    private FanChannel ToChannel(int index, ISensor sensor)
     {
         var control = sensor.Control;
+        var names = Names(sensor);
         return new FanChannel(
             index,
-            sensor.Identifier.ToString(),
-            sensor.Name,
-            sensor.Hardware.Name,
+            names.Id,
+            names.Name,
+            names.Hardware,
             control.MinSoftwareValue,
             control.MaxSoftwareValue,
             percent: () => sensor.Value,

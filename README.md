@@ -114,6 +114,8 @@ Both are self-contained single exe files, so the target PC needs no .NET install
 
 **Texts and languages:** every text the user sees goes through `T(...)` (`src/AutoFantic.Core/Texts.cs`): the English text is the key, the German one is in `src/*/Lang/*.json`. A text without a translation stays English. To find them: set `AUTOFANTIC_MISSING_TEXTS` to a file, run the app in German (e.g. `--simulate --screenshot … --page …`), and it lists every text it showed without a translation. A test checks that each German text has the same placeholders as its English one.
 
+**Mainboard header names:** LibreHardwareMonitor names a fan chip's outputs from one list per chip, which is wrong on boards it doesn't know (an ASRock board's second CPU fan header shows up as "Pump Fan"). `src/AutoFantic.Core/Hardware/BoardNames.cs` lists the boards whose headers are known: the make and model as the sensor list's "Mainboard:" line gives them, the fan chip, and output number → name. Only add outputs that were checked on a real board.
+
 **Trying a change before pushing it:** exit AuFantic, then double-click `Start-Dev-Build.cmd`. It builds the source as it is now into `dev\` and starts it (Settings shows its version with *-dev*, e.g. 0.2.0-dev), with the same data as the installed AuFantic. Start the installed one again afterwards.
 
 ```

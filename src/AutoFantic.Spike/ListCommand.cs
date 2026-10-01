@@ -24,6 +24,7 @@ internal static class ListCommand
     {
         var text = new StringBuilder();
         text.AppendLine($"AuFantic hardware report · {snapshot.Time:yyyy-MM-dd HH:mm}");
+        text.AppendLine($"Mainboard: {session.Board ?? "unknown"}");
         text.AppendLine();
 
         // grouped by hardware in the order the library reports it (the Super I/O chip carries the mainboard fans)

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.2] - 01.10.2026
+
+### Fixed
+
+- **A second CPU fan was called "Pump Fan header":** the names of the mainboard's fan outputs come from one fixed list per fan chip, and on a mainboard that list wasn't written for they can be wrong. On the ASRock X870 Steel Legend WiFi the two CPU fan headers are now called *CPU Fan 1* and *CPU Fan 2*, as printed on the board. AuFantic reads the mainboard's make and model for this and uses the right names where it knows them; more boards follow as they are reported. Your fans, curves and the Monitor's history stay as they are, only the names change, and the Log says so once. Nothing has to be found or calibrated again.
+
+### Changed
+
+- **The sensor list names the mainboard** (*Settings → Developer → Show all sensors*): its first lines now say which mainboard it is. If a fan has the wrong name on your PC, that file is what's needed to fix it.
+
 ## [0.2.1] - 01.10.2026
 
 ### New

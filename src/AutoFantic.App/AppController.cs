@@ -187,6 +187,18 @@ internal sealed class AppController : IDisposable
             inventory = null;
         }
         var calibration = inventory is null ? null : CalibrationResult.Load(Path.Combine(runs, CalibrationFiles.Result));
+        if (inventory?.WithNames(session.Channels) is { } named && !ReferenceEquals(named, inventory))
+        {
+            // this version knows the mainboard's headers by their real names: what was saved takes them over
+            inventory = named;
+            inventory.Save(Path.Combine(runs, CalibrationFiles.Inventory));
+            if (calibration?.WithNames(inventory) is { } renamed && !ReferenceEquals(renamed, calibration))
+            {
+                calibration = renamed;
+                calibration.Save(Path.Combine(runs, CalibrationFiles.Result));
+            }
+            log.Add(LogKind.Info, T($"The fans are now named like the headers on your mainboard ({session.Board}): {string.Join(", ", inventory.Groups().Select(g => g.Name))}."));
+        }
         var overrides = CurveOverrides.Load(Path.Combine(runs, CalibrationFiles.Curves));
 
         FanControlLoop loop;
@@ -937,7 +949,10 @@ internal sealed class AppController : IDisposable
     public string SensorList()
     {
         var snapshot = Session.Read();
-        var text = new System.Text.StringBuilder($"AuFantic sensors · {snapshot.Time:yyyy-MM-dd HH:mm:ss}{Environment.NewLine}{Environment.NewLine}");
+        var text = new System.Text.StringBuilder($"AuFantic sensors · {snapshot.Time:yyyy-MM-dd HH:mm:ss}{Environment.NewLine}");
+        // the fan chip's outputs are named per mainboard (BoardNames): the board says which list applies
+        text.AppendLine($"Mainboard: {Session.Board ?? "unknown"}");
+        text.AppendLine();
         foreach (var hardware in snapshot.Readings.GroupBy(r => (r.Hardware, r.HardwareType)))
         {
             text.AppendLine($"== {hardware.Key.Hardware} ({hardware.Key.HardwareType})");

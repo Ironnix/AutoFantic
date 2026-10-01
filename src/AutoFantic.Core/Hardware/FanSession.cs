@@ -23,6 +23,9 @@ public abstract class FanSession : IDisposable
 
     public abstract IReadOnlyList<FanChannel> Channels { get; }
 
+    /// <summary>The mainboard's make and model ("ASRock X870 Steel Legend WiFi"); null if the PC doesn't say (or is simulated).</summary>
+    public virtual string? Board => null;
+
     /// <summary>
     /// The session's clock, the same one that stamps each <see cref="Snapshot"/>. Real time on
     /// real hardware; a sped-up simulation runs ahead of the wall clock.

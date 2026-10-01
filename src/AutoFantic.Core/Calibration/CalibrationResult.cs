@@ -73,6 +73,17 @@ public sealed record CalibrationResult(
     /// </summary>
     public const double MaxSlope = 5;
 
+    /// <summary>
+    /// The same result with each group called what <paramref name="inventory"/> calls the group with the
+    /// same outputs now (<see cref="FanInventory.WithNames"/>). This result itself if no name changed.
+    /// </summary>
+    public CalibrationResult WithNames(FanInventory inventory)
+    {
+        var names = inventory.Groups().ToDictionary(MeasurementStore.Key, g => g.Name);
+        string Name(CalibratedGroup g) => names.GetValueOrDefault(MeasurementStore.Key(g.ControlIds), g.Name);
+        return Groups.All(g => Name(g) == g.Name) ? this : this with { Groups = Groups.Select(g => g with { Name = Name(g) }).ToList() };
+    }
+
     // "silent" is −∞ dB
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
 

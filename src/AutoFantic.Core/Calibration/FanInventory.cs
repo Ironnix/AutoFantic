@@ -48,8 +48,9 @@ public sealed record FanHeader(
     public float? LowestSpinning => Rpm.Where(p => p.Rpm >= StoppedBelowRpm).Select(p => (float?)p.Percent).Min();
 
     /// <summary>
-    /// The mainboard names some headers after their intended use ("Pump Fan"), whatever is plugged in.
-    /// Says "header" when a normal fan sits on a pump header, so nobody mistakes it for a pump.
+    /// Some outputs are named after their intended use ("Pump Fan"), whatever is plugged in. Says
+    /// "header" when a normal fan sits on a pump header, so nobody mistakes it for a pump. On a
+    /// mainboard whose headers are known the output already has its real name (<see cref="BoardNames"/>).
     /// </summary>
     public string DisplayName =>
         !IsPump && Name.Contains("Pump", StringComparison.OrdinalIgnoreCase) ? $"{Name} header" : Name;
@@ -143,6 +144,19 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
     public bool Fits(IReadOnlyList<FanChannel> channels) =>
         Headers.Select(h => h.ControlId).ToHashSet().SetEquals(channels.Select(c => c.Id))
         && Headers.All(h => h.IsPump || !FanChannel.IsCoolerPumpOutput(h.ControlId, h.Name));
+
+    /// <summary>
+    /// The same fans with the outputs' names as the PC gives them now. They change when a newer AuFantic
+    /// knows a mainboard's headers by their real names (<see cref="BoardNames"/>); nothing has to be
+    /// found again for that. This inventory itself if every name is still the same.
+    /// </summary>
+    public FanInventory WithNames(IReadOnlyList<FanChannel> channels)
+    {
+        var names = channels.ToDictionary(c => c.Id, c => c.Name);
+        if (Headers.All(h => names.GetValueOrDefault(h.ControlId, h.Name) == h.Name))
+            return this;
+        return this with { Headers = Headers.Select(h => h with { Name = names.GetValueOrDefault(h.ControlId, h.Name) }).ToList() };
+    }
 
     public void Save(string path) => File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
 

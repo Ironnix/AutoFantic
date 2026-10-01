@@ -175,6 +175,33 @@ public class CalibrationTests
     }
 
     [Fact]
+    public void Fans_found_under_the_librarys_names_take_over_the_mainboards()
+    {
+        var found = RalfsPc().WithLoudness(RalfsPc().Groups()[1], fanCount: 1, loudnessDb: 5);
+        var channels = found.Headers
+            .Select(h => new FanChannel(h.Channel, h.ControlId, BoardNames.For("ASRock X870 Steel Legend WiFi", h.ControlId, h.Name), h.Hardware, 0, 100,
+                percent: () => null, isSoftwareControlled: () => false, set: _ => { }, restoreDefault: () => { }))
+            .ToList();
+
+        var named = found.WithNames(channels);
+
+        Assert.Equal(["CPU Fan 1 (#0)", "CPU Fan 2 (#1)", "System Fan #4 (#5)", "GPU fans (#8, #9)"], named.Groups().Select(g => g.Name));
+        Assert.Equal(5, named.Headers.Single(h => h.Channel == 1).LoudnessDb); // what was known about the fans stays
+        Assert.Equal(found.Groups().Select(MeasurementStore.Key), named.Groups().Select(MeasurementStore.Key));
+        Assert.Same(named, named.WithNames(channels)); // nothing to rename: nothing to save again
+
+        // the curves saved for "Pump Fan header (#1)" are the same group's
+        CalibratedGroup Calibrated(FanGroup g) => new(g.Name, [.. g.Headers.Select(h => h.Channel)], [.. g.Headers.Select(h => h.ControlId)], Component.Cpu, 5, 0, [new(60, 40)], []);
+        var result = new CalibrationResult(DateTimeOffset.Now, "balanced", 22, [.. found.Groups().Select(Calibrated)], [], new Dictionary<Component, double[]>(), 0, 0);
+
+        var renamed = result.WithNames(named);
+
+        Assert.Equal(named.Groups().Select(g => g.Name), renamed.Groups.Select(g => g.Name));
+        Assert.Equal(result.Groups.Select(g => g.Curve), renamed.Groups.Select(g => g.Curve));
+        Assert.Same(renamed, renamed.WithNames(named));
+    }
+
+    [Fact]
     public void Inventory_survives_a_round_trip_through_json()
     {
         string path = Path.Combine(Path.GetTempPath(), $"fans-{Guid.NewGuid():N}.json");
