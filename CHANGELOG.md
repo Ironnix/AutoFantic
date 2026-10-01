@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.1] - 01.10.2026
+
+### New
+
+- **Hide a line in a chart:** click a name above a chart (*Monitor*, *Cooling health*) and its line is gone; click again and it's back. The name stays, greyed, with an empty square. The scale then fits the lines that are left, so a single one is easier to read.
+- **Compare: your own chart** (*Monitor*): pick any lines you want to see together, for example the GPU memory temperature and the GPU fans' rpm. Each unit has its own scale: the first one you picked on the left, the second on the right; hover for the values of the others. Your choice is kept.
+- **The Monitor's heading and time ranges stay in view** while the charts scroll.
+- **Say yourself what a fan cools** (*Calibration → Your fans*): next to how many fans are on an output and how loud they are, you can now choose *CPU cooler*, *case fans* or *graphics card*. The calibration measures this, and *as measured* stays the default. If it came out wrong, your choice counts: the fan's curve then follows that temperature (case fans: the warmer of CPU and GPU). It is kept when the fans are found again.
+- **The logo's fan has seven blades** instead of three, with rounded tips, like a real PC fan: in the program's icon, the window, the taskbar and next to the clock.
+
+### Changed
+
+- **"Switch off when the PC is idle and cool" can always be ticked** (*Fan curves*), also for fans whose standstill at 0 % wasn't measured, and dragging a point down to 0 % switches it on for every fan. Before, the box was greyed out until *Find my fans* had seen the fans stand still. What was measured is still said under the box: fans that kept turning at 0 % in the test may only get slower. The box stays greyed out only while the BIOS controls these fans.
+
+### Fixed
+
+- **Three fans on a graphics card:** many cards have three fans on two outputs (the first and the third are wired together, the middle one has its own), so AuFantic finds "GPU fans (#8, #9)". That is how the card is built, not a mistake. Under *Calibration → Your fans* you could only end up with 2 or 4 fans there: 1, 3 and 5 jumped to the next even number. Now the number you choose is the number that counts.
+
 ## [0.2.0] - 01.10.2026
 
 ### New

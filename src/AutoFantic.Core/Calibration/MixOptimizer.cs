@@ -18,9 +18,10 @@ public static class NoiseModel
     private static double Fan(FanHeader header, double speed)
     {
         float rpm = header.RpmAt((float)speed);
-        return rpm < 50 ? double.NegativeInfinity
+        // no fan counted on this output (one fan on a card with two outputs): nothing to hear
+        return rpm < 50 || header.FanCount <= 0 ? double.NegativeInfinity
             : 50 * Math.Log10(rpm / 1000.0) + (header.IsGpu ? GpuPenalty : 0)
-              + 10 * Math.Log10(Math.Max(1, header.FanCount)) + header.LoudnessDb;
+              + 10 * Math.Log10(header.FanCount) + header.LoudnessDb;
     }
 
     private static double Sum(IEnumerable<double> levels)

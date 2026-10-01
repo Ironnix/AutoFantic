@@ -218,9 +218,16 @@ internal static class Program
         After(TimeSpan.FromSeconds(4), () => frame.Continue = false);
         Dispatcher.PushFrame(frame);
 
-        var root = full && window.VisiblePage is System.Windows.Controls.ScrollViewer { Content: FrameworkElement content } ? content : (FrameworkElement)window.Content;
+        // the whole page: everything that scrolls, under the page's fixed head if it has one (the Monitor's heading and time ranges)
+        List<FrameworkElement> parts = !full ? [(FrameworkElement)window.Content] : window.VisiblePage switch
+        {
+            System.Windows.Controls.ScrollViewer { Content: FrameworkElement content } => [content],
+            System.Windows.Controls.Panel panel when panel.Children.OfType<System.Windows.Controls.ScrollViewer>().Any() =>
+                [.. panel.Children.OfType<FrameworkElement>().Select(child => child is System.Windows.Controls.ScrollViewer { Content: FrameworkElement inner } ? inner : child)],
+            _ => [(FrameworkElement)window.Content],
+        };
         var dpi = VisualTreeHelper.GetDpi(window);
-        var size = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
+        var size = new Rect(0, 0, parts.Max(p => p.ActualWidth), parts.Sum(p => p.ActualHeight + p.Margin.Bottom));
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
@@ -229,7 +236,14 @@ internal static class Program
                 ?? window.TryFindResource("WindowBackground") as System.Windows.Media.Brush
                 ?? window.Background ?? System.Windows.Media.Brushes.White;
             dc.DrawRectangle(background, null, size);
-            dc.DrawRectangle(new VisualBrush(root), null, size);
+            double y = 0;
+            foreach (var part in parts)
+            {
+                // not stretched: a heading's text is narrower than the room it has
+                var brush = new VisualBrush(part) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top };
+                dc.DrawRectangle(brush, null, new Rect(0, y, part.ActualWidth, part.ActualHeight));
+                y += part.ActualHeight + part.Margin.Bottom;
+            }
         }
         var bitmap = new RenderTargetBitmap((int)(size.Width * dpi.DpiScaleX), (int)(size.Height * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
         bitmap.Render(visual);

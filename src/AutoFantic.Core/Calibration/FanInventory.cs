@@ -8,8 +8,11 @@ public sealed record RpmPoint(float Percent, float Rpm);
 /// <summary>One fan output as "discover" found it: which RPM sensor follows it and how fast it turns.</summary>
 /// <param name="RpmSensorId">The RPM sensor that followed this control; null = nothing reacted (empty header).</param>
 /// <param name="Rpm">Measured speed per duty cycle, ascending.</param>
-/// <param name="FanCount">How many fans this output drives (a splitter or hub drives several; the user says).</param>
+/// <param name="FanCount">How many fans this output drives (a splitter or hub drives several; the user says). 0 on a
+/// graphics card's output: the user counted fewer fans than the card has outputs, so this one's are counted with another.</param>
 /// <param name="LoudnessDb">The user's correction for how loud these fans are: −5 quiet, 0 normal, +5 loud.</param>
+/// <param name="Cools">What the user says these fans cool, where the calibration got it wrong: <see cref="Component.Cpu"/> (the CPU
+/// cooler), <see cref="Component.GpuCore"/> (the graphics card) or <see cref="Component.Warmest"/> (case fans: both). Null = as measured.</param>
 public sealed record FanHeader(
     int Channel,
     string ControlId,
@@ -19,7 +22,8 @@ public sealed record FanHeader(
     IReadOnlyList<RpmPoint> Rpm,
     bool IsPump,
     int FanCount = 1,
-    double LoudnessDb = 0)
+    double LoudnessDb = 0,
+    Component? Cools = null)
 {
     internal const float StoppedBelowRpm = 50;
 
@@ -90,6 +94,9 @@ public sealed record FanGroup(string Name, IReadOnlyList<FanHeader> Headers)
     /// <summary>False while it isn't measured what one of its fans does at 0 %.</summary>
     public bool StopMeasured => Headers.All(h => h.StopMeasured);
 
+    /// <summary>What the user says these fans cool (<see cref="FanHeader.Cools"/>); null = as the calibration measured it.</summary>
+    public Component? Cools => Headers.Select(h => h.Cools).FirstOrDefault(c => c is not null);
+
     /// <summary>
     /// Lowest speed the group may run at while spinning. A fan that stood still at a measured step
     /// above 0 % (a GPU at 30 %) starts somewhere above it: 40 % is the first guess, which the
@@ -154,19 +161,28 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
     /// <summary>A copy with what the user said about a group's fans: how many there are and how loud they are.</summary>
     public FanInventory WithLoudness(FanGroup group, int fanCount, double loudnessDb)
     {
-        var channels = group.Headers.Select(h => h.Channel).ToHashSet();
+        // several headers in one group share the count, the first ones take what is left over: a
+        // graphics card with 3 fans on 2 outputs is 2 + 1, so the group's fans still add up to 3
+        var channels = group.Headers.Select(h => h.Channel).ToList();
+        int Part(int channel) => fanCount / channels.Count + (channels.IndexOf(channel) < fanCount % channels.Count ? 1 : 0);
         return this with
         {
-            // several headers in one group (the GPU's fans) share the count: each gets its part
             Headers = Headers.Select(h => channels.Contains(h.Channel)
-                ? h with { FanCount = Math.Max(1, (int)Math.Round((double)fanCount / channels.Count)), LoudnessDb = loudnessDb }
+                ? h with { FanCount = Part(h.Channel), LoudnessDb = loudnessDb }
                 : h).ToList(),
         };
     }
 
+    /// <summary>A copy with what the user says a group's fans cool (CPU, GPU, or both for case fans); null = as measured again.</summary>
+    public FanInventory WithCools(FanGroup group, Component? cools)
+    {
+        var channels = group.Headers.Select(h => h.Channel).ToHashSet();
+        return this with { Headers = Headers.Select(h => channels.Contains(h.Channel) ? h with { Cools = cools } : h).ToList() };
+    }
+
     /// <summary>
     /// A copy that keeps what was known before the fans were found again: what the user said about
-    /// each output's fans (how many, how loud) and, for the same fan, what was measured at speeds
+    /// each output's fans (how many, how loud, what they cool) and, for the same fan, what was measured at speeds
     /// "Find my fans" didn't test this time (0 % while the PC was busy, a standstill seen during a calibration).
     /// </summary>
     public FanInventory KeepingKnown(FanInventory? before)
@@ -178,6 +194,7 @@ public sealed record FanInventory(DateTimeOffset Created, IReadOnlyList<FanHeade
             {
                 FanCount = old.FanCount,
                 LoudnessDb = old.LoudnessDb,
+                Cools = old.Cools,
                 Rpm = h.RpmSensorId is null || h.RpmSensorId != old.RpmSensorId
                     ? h.Rpm
                     : h.Rpm.Concat(old.Rpm.Where(p => h.Rpm.All(now => now.Percent != p.Percent))).OrderBy(p => p.Percent).ToList(),

@@ -232,22 +232,24 @@ internal sealed class TrayIcon : IDisposable
             square.CloseFigure();
             g.FillPath(fill, square);
 
+            const int blades = 7;
             using var blade = new GraphicsPath();
-            blade.AddBezier(126, 102, 116, 84, 108, 62, 110, 42);
-            blade.AddArc(40, 40, 176, 176, 258.2f, 68.8f);
-            blade.AddBezier(202, 80, 182, 86, 164, 98, 152, 116);
+            blade.AddBezier(128f, 97f, 128f, 72f, 156.2f, 58.1f, 183.6f, 61.7f);
+            blade.AddArc(41.5f, 41.5f, 173f, 173f, 310f, 13f);
+            blade.AddBezier(197.1f, 75.9f, 172.2f, 66.9f, 138.5f, 75.8f, 130.2f, 97.1f);
             blade.CloseFigure();
-            using var edge = new Pen(Color.White, 8) { LineJoin = LineJoin.Round };
-            for (int i = 0; i < 3; i++)
+            // a slim blade under a wide round edge: every corner is rounded with half the edge as its radius
+            using var edge = new Pen(Color.White, 18) { LineJoin = LineJoin.Round };
+            for (int i = 0; i < blades; i++)
             {
                 g.FillPath(Brushes.White, blade);
                 g.DrawPath(edge, blade);
                 g.TranslateTransform(128, 128);
-                g.RotateTransform(120);
+                g.RotateTransform(360f / blades);
                 g.TranslateTransform(-128, -128);
             }
             g.FillEllipse(Brushes.White, 104, 104, 48, 48);
-            g.FillEllipse(fill, 118, 118, 20, 20);
+            g.FillEllipse(fill, 117, 117, 22, 22);
         }
         return Icon.FromHandle(bitmap.GetHicon());
     }

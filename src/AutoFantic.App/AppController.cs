@@ -224,6 +224,7 @@ internal sealed class AppController : IDisposable
         app.Quiet = QuietSettings.Load(Path.Combine(runs, QuietSettings.FileName));
         app.Updates = UpdateSettings.Load(Path.Combine(runs, UpdateSettings.FileName));
         app.Appearance = AppearanceSettings.Load(Path.Combine(runs, AppearanceSettings.FileName));
+        app.Compare = CompareSettings.Load(Path.Combine(runs, CompareSettings.FileName));
         UpdateInstaller.CleanUp(AppContext.BaseDirectory, app.UpdateWork); // what an update left behind
         app.Monitor.SessionEnded += ended => app.Log.Add(LogKind.Info, Describe(ended));
         loop.Sampled += (snapshot, status) =>
@@ -571,6 +572,15 @@ internal sealed class AppController : IDisposable
         warnings.Save(Path.Combine(RunsPath, WarningSettings.FileName));
     }
 
+    /// <summary>The lines of the Monitor's "Compare" chart: kept, so the chart is the same the next time the window opens.</summary>
+    public CompareSettings Compare { get; private set; } = new();
+
+    public void SaveCompare(CompareSettings compare)
+    {
+        Compare = compare;
+        compare.Save(Path.Combine(RunsPath, CompareSettings.FileName));
+    }
+
     /// <summary>Set when the run before this one ended without handing the fans back (and the watchdog or this start did it): what happened.</summary>
     public string? UnexpectedEnd { get; private init; }
 
@@ -654,11 +664,14 @@ internal sealed class AppController : IDisposable
 
     public bool IsCustom(int group) => Recommended is { } r && Overrides.For(r.Groups[group]) is not null;
 
-    /// <summary>The group's fans measurably stood still at 0 % (fans.json): only then can they be switched off.</summary>
+    /// <summary>The group's fans measurably stood still at 0 % (fans.json). The user may switch any fan off; this only says what to expect.</summary>
     public bool CanStop(int group) => Found(group)?.CanStop == true;
 
     /// <summary>False while it isn't measured what the group's fans do at 0 % ("Find my fans" tests it while the PC isn't busy).</summary>
     public bool StopMeasured(int group) => Found(group)?.StopMeasured != false;
+
+    /// <summary>True if the user said what this group's fans cool, instead of what the calibration measured.</summary>
+    public bool CoolsChosen(int group) => Found(group)?.Cools is not null;
 
     private FanGroup? Found(int group) =>
         Recommended is { } r ? Inventory?.Groups().FirstOrDefault(k => k.Headers.Select(h => h.ControlId).SequenceEqual(r.Groups[group].ControlIds)) : null;
@@ -681,7 +694,7 @@ internal sealed class AppController : IDisposable
     {
         if (Recommended is not { } r)
             return;
-        Overrides = Overrides.With(r.Groups[group], new CurveOverride(curve, allowStop && CanStop(group)));
+        Overrides = Overrides.With(r.Groups[group], new CurveOverride(curve, allowStop));
         Overrides.Save(Path.Combine(RunsPath, CalibrationFiles.Curves));
         Apply();
     }
@@ -721,6 +734,17 @@ internal sealed class AppController : IDisposable
         if (groups is null || group >= groups.Count)
             return;
         Inventory = Inventory!.WithLoudness(groups[group], fanCount, loudnessDb);
+        Inventory.Save(Path.Combine(RunsPath, CalibrationFiles.Inventory));
+        Recalculate(Preset);
+    }
+
+    /// <summary>What the user says a group's fans cool (CPU, GPU, or both for case fans; null = as measured): its curve then follows that temperature.</summary>
+    public void SetCools(int group, Component? cools)
+    {
+        var groups = Inventory?.Groups();
+        if (groups is null || group >= groups.Count)
+            return;
+        Inventory = Inventory!.WithCools(groups[group], cools);
         Inventory.Save(Path.Combine(RunsPath, CalibrationFiles.Inventory));
         Recalculate(Preset);
     }

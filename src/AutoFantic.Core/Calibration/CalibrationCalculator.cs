@@ -88,9 +88,11 @@ public static class CalibrationCalculator
     /// GPU fans follow the GPU. A mainboard fan that clearly cools the GPU too (case fans: at least
     /// 2 °C, and at least a quarter of what it does for the CPU) follows whichever is warmer, so a
     /// GPU-heavy game with a cool CPU still gets the airflow. The others (the CPU cooler) follow the CPU.
+    /// What the user says a fan cools (<see cref="FanGroup.Cools"/>) goes before all of that.
     /// </summary>
     public static Component Follows(FanGroup group, double cpuEffect, double gpuEffect) =>
-        group.IsGpu ? Component.GpuCore
+        group.Cools is Component.Cpu or Component.GpuCore or Component.Warmest ? group.Cools.Value
+        : group.IsGpu ? Component.GpuCore
         : gpuEffect >= 2 && gpuEffect >= 0.25 * cpuEffect ? Component.Warmest
         : Component.Cpu;
 }

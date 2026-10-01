@@ -56,6 +56,10 @@ public partial class MainWindow : Window
     // loudness choices for "Your fans": label → dB correction
     private static readonly (string Label, double Db)[] LoudnessChoices = [("quiet", -5), ("normal", 0), ("loud", 5)];
 
+    // what a fan cools, also under "Your fans": as the calibration measured it, or what the user says
+    private static readonly (string Label, Component? Cools)[] CoolsChoices =
+        [("as measured", null), ("CPU cooler", Component.Cpu), ("case fans", Component.Warmest), ("graphics card", Component.GpuCore)];
+
     // how many entries the Log page shows
     private const int LogShown = 300;
 
@@ -82,6 +86,7 @@ public partial class MainWindow : Window
     private IReadOnlyList<string> _groupsShown = [];
     private bool _wasSetUp;
     private TimeSpan _range = TimeSpan.FromHours(1);
+    private IReadOnlyList<string> _compareChoices = []; // the series the Compare card has a button for
 
     // the cooling health chart's time ranges: per day up to a month, per week beyond
     private static readonly (string Label, TimeSpan Span)[] HealthRanges =
@@ -142,9 +147,9 @@ public partial class MainWindow : Window
             UpdateLive();
         };
 
-        // drawing a point down to 0 % means "off here": that switches stopping on where the fan can stop
+        // drawing a point down to 0 % means "off here": that switches stopping on
         Editor.CurveEdited += curve => _app.SetCurve(_selected, curve,
-            AllowStop.IsChecked == true || (curve.Count > 0 && curve[0].Percent <= 0 && _app.CanStop(_selected)));
+            AllowStop.IsChecked == true || (curve.Count > 0 && curve[0].Percent <= 0));
         AllowStop.Click += (_, _) =>
         {
             if (_app.Effective is { } effective)
@@ -549,16 +554,16 @@ public partial class MainWindow : Window
         bool canStop = _app.CanStop(_selected), allows = _app.AllowsStop(_selected);
         double offAt = CurveController.OffTemperature(effective);
         string part = CalibrationInsights.Name(effective.Follows);
-        AllowStop.IsEnabled = canStop && !bios;
+        // always the user's choice (only not while the BIOS has these fans); what was measured at 0 % is only said
+        AllowStop.IsEnabled = !bios;
         AllowStop.IsChecked = allows;
-        StopHint.Text = !canStop
-            ? _app.StopMeasured(_selected)
-                ? T("These fans keep turning at 0 %, so they can't be switched off.")
-                : T("Not tested yet whether these fans stand still at 0 %: Calibration → Find my fans again, while no game is running.")
-            : allows
+        StopHint.Text = (allows
             ? T($"Off at idle up to {part} {offAt:0} °C, on again above {offAt + CurveController.Hysteresis:0} °C or under load.")
               + (_app.RecommendsStop(_selected) ? "" : T(" (Your choice: the calibration keeps them on.)"))
-            : T("Or drag a point down to 0 %.") + (_app.RecommendsStop(_selected) ? T(" Recommended.") : "");
+            : T("Or drag a point down to 0 %.") + (_app.RecommendsStop(_selected) ? T(" Recommended.") : ""))
+            + (canStop ? ""
+                : _app.StopMeasured(_selected) ? T(" In the test these fans kept turning at 0 %: they may only get slower, not stop.")
+                : T(" Not tested yet whether these fans stand still at 0 %: Calibration → Find my fans again tests it."));
         Editor.OffBelow = allows ? offAt : null;
         ResetCurve.IsEnabled = custom && !bios;
 
@@ -981,6 +986,7 @@ public partial class MainWindow : Window
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var count = new ComboBox { Width = 110, Margin = new Thickness(0, 0, 10, 0) };
             for (int n = 1; n <= 6; n++)
@@ -993,6 +999,11 @@ public partial class MainWindow : Window
             double db = group.Headers[0].LoudnessDb;
             loudness.SelectedIndex = Array.FindIndex(LoudnessChoices, c => Math.Abs(c.Db - db) < 0.1) is >= 0 and var i ? i : 1;
 
+            var cools = new ComboBox { Width = 150, Margin = new Thickness(10, 0, 0, 0), ToolTip = T("What these fans cool. Their curve follows that temperature.") };
+            foreach (var (label, _) in CoolsChoices)
+                cools.Items.Add(T(label));
+            cools.SelectedIndex = Math.Max(0, Array.FindIndex(CoolsChoices, c => c.Cools == group.Cools));
+
             void Changed()
             {
                 if (_building)
@@ -1003,11 +1014,20 @@ public partial class MainWindow : Window
             }
             count.SelectionChanged += (_, _) => Changed();
             loudness.SelectionChanged += (_, _) => Changed();
+            cools.SelectionChanged += (_, _) =>
+            {
+                if (_building)
+                    return;
+                Cursor = System.Windows.Input.Cursors.Wait;
+                _app.SetCools(index, CoolsChoices[Math.Max(0, cools.SelectedIndex)].Cools);
+                Cursor = null;
+            };
 
             row.Children.Add(Dot(g));
-            Place(row, new TextBlock { Text = group.Name, FontSize = 14, VerticalAlignment = VerticalAlignment.Center }, 1);
+            Place(row, new TextBlock { Text = group.Name, FontSize = 14, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis }, 1);
             Place(row, count, 2);
             Place(row, loudness, 3);
+            Place(row, cools, 4);
             LoudnessRows.Children.Add(row);
         }
     }
@@ -1033,7 +1053,11 @@ public partial class MainWindow : Window
             row.Children.Add(Dot(g));
             var name = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             name.Children.Add(new TextBlock { Text = group.Name, FontSize = 14 });
-            name.Children.Add(new TextBlock { Text = T($"{CalibrationReport.Role(group)} · follows the {CalibrationInsights.FollowsName(group.Follows)}"),Style = (Style)FindResource("Caption") });
+            name.Children.Add(new TextBlock
+            {
+                Text = T($"{CalibrationReport.Role(group)} · follows the {CalibrationInsights.FollowsName(group.Follows)}") + (_app.CoolsChosen(g) ? T(" (your choice)") : ""),
+                Style = (Style)FindResource("Caption"),
+            });
             Place(row, name, 1);
             Place(row, bars, 2);
             EffectRows.Children.Add(row);
@@ -1183,6 +1207,56 @@ public partial class MainWindow : Window
         RpmChart.Show(Lines([.. rpm.Select((x, i) => Line(x, FanColor(x, i)))]), from, to, T("rpm"), min: 0, axis: axis);
 
         BuildValues(series, data);
+        ShowCompare(series, data, from, to, axis);
+    }
+
+    // in the Compare chart every unit has its own scale; power and the fans start at 0, as in their own charts
+    private static ChartScale ScaleOf(Series x) => x.Kind switch
+    {
+        SeriesKind.Temperature => new ChartScale(x.Unit),
+        SeriesKind.Power or SeriesKind.FanRpm => new ChartScale(x.Unit, Min: 0),
+        _ => new ChartScale(x.Unit, Min: 0, Max: 100),
+    };
+
+    /// <summary>
+    /// The user's own chart: a button per series, and the chosen ones together in one chart, in
+    /// the order they were picked. The buttons are built again only when the series change.
+    /// </summary>
+    private void ShowCompare(IReadOnlyList<Series> series, Dictionary<string, IReadOnlyList<HistoryPoint>> data, DateTimeOffset from, DateTimeOffset to, RunningAxis axis)
+    {
+        var known = series.OrderBy(x => x.Kind).ToList();
+        if (!known.Select(x => x.Key).SequenceEqual(_compareChoices))
+        {
+            _compareChoices = [.. known.Select(x => x.Key)];
+            CompareChoices.Children.Clear();
+            foreach (var x in known)
+            {
+                var button = new ToggleButton
+                {
+                    Style = (Style)FindResource("Choice"),
+                    Padding = new Thickness(10, 4, 10, 4),
+                    Margin = new Thickness(0, 0, 6, 6),
+                    Content = new TextBlock { Text = Describe(x), FontSize = 13 },
+                    IsChecked = _app.Compare.Series.Contains(x.Key),
+                };
+                string key = x.Key;
+                button.Click += (_, _) =>
+                {
+                    var others = _app.Compare.Series.Where(k => k != key);
+                    _app.SaveCompare(new CompareSettings(button.IsChecked == true ? [.. others, key] : [.. others]));
+                    RefreshMonitor();
+                };
+                CompareChoices.Children.Add(button);
+            }
+        }
+
+        var lines = _app.Compare.Series
+            .Select(key => known.FirstOrDefault(x => x.Key == key))
+            .OfType<Series>()
+            .Select((x, i) => new ChartLine(Describe(x), Palette[i % Palette.Length], data.GetValueOrDefault(x.Key) ?? [], ScaleOf(x)))
+            .ToList();
+        CompareChart.Visibility = lines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        CompareChart.Show(lines, from, to, "", axis: axis);
     }
 
     /// <summary>Now, lowest, average and highest of every series in the range, a little like HWiNFO.</summary>
@@ -1194,7 +1268,7 @@ public partial class MainWindow : Window
         foreach (double width in new[] { 2.4, 1, 1, 1, 1 })
             ValueRows.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width, GridUnitType.Star) });
         string range = Ranges.First(r => r.Span == _range).Label;
-        ValuesIntro.Text = T($"The last {T(range.StartsWith("1 ", StringComparison.Ordinal) ? range[2..] : range)}. Hover over a chart to see its values at that time.");
+        ValuesIntro.Text = T($"The last {T(range.StartsWith("1 ", StringComparison.Ordinal) ? range[2..] : range)}. Hover over a chart to see its values at that time. Click a name above a chart to hide its line.");
 
         void Row(int row, string[] cells, bool header)
         {

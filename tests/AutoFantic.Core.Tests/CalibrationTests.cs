@@ -129,6 +129,42 @@ public class CalibrationTests
         Assert.False(groups[0].CanStop);
     }
 
+    [Theory]
+    [InlineData(1, 1.0)]
+    [InlineData(2, 2.0)]
+    [InlineData(3, 3.0)] // three fans on the card's two outputs: 2 + 1, not 2 + 2
+    [InlineData(4, 4.0)]
+    [InlineData(5, 5.0)]
+    public void The_fans_the_user_counted_on_a_graphics_card_stay_that_many(int fans, double timesAsLoud)
+    {
+        var one = RalfsPc().Groups()[3] with { Headers = [RalfsPc().Groups()[3].Headers[0]] };
+        var inventory = RalfsPc().WithLoudness(RalfsPc().Groups()[3], fans, loudnessDb: 0);
+        var gpu = inventory.Groups()[3];
+
+        Assert.Equal(fans, gpu.Headers.Sum(h => h.FanCount));
+        // as loud as that many single fans: 10·log10(n) above one of them
+        Assert.Equal(10 * Math.Log10(timesAsLoud), NoiseModel.Group(gpu, 100) - NoiseModel.Group(one, 100), 1);
+        Assert.All(inventory.Headers.Where(h => !h.IsGpu), h => Assert.Equal(1, h.FanCount));
+    }
+
+    [Fact]
+    public void What_the_user_says_a_fan_cools_goes_before_what_was_measured()
+    {
+        var measured = RalfsPc();
+        var cpuFan = measured.Groups()[0];
+        Assert.Equal(Component.Cpu, CalibrationCalculator.Follows(cpuFan, cpuEffect: 6, gpuEffect: 0.2));
+
+        // "these are case fans" and "this one sits on the graphics card", although the calibration saw them cool the CPU
+        var said = measured.WithCools(cpuFan, Component.Warmest).WithCools(measured.Groups()[1], Component.GpuCore);
+        Assert.Equal(Component.Warmest, CalibrationCalculator.Follows(said.Groups()[0], 6, 0.2));
+        Assert.Equal(Component.GpuCore, CalibrationCalculator.Follows(said.Groups()[1], 6, 0.2));
+        Assert.Equal(Component.GpuCore, CalibrationCalculator.Follows(said.Groups()[3], 0, 8)); // the others: as before
+
+        // finding the fans again keeps it; "as measured" takes it back
+        Assert.Equal(Component.Warmest, measured.KeepingKnown(said).Groups()[0].Cools);
+        Assert.Equal(Component.Cpu, CalibrationCalculator.Follows(said.WithCools(said.Groups()[0], null).Groups()[0], 6, 0.2));
+    }
+
     [Fact]
     public void A_confirmed_pump_is_never_used()
     {

@@ -210,11 +210,17 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- monitor: the history of temperatures, power and fans, and the warnings -->
-            <ScrollViewer x:Name="MonitorPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+            <!-- monitor: the history of temperatures, power and fans, and the warnings; the heading and the time ranges stay in view while the charts scroll -->
+            <Grid x:Name="MonitorPage" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Monitor" Style="{StaticResource Heading}" />
+                <WrapPanel x:Name="RangeButtons" Grid.Row="1" Margin="0,0,0,4" />
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="Monitor" Style="{StaticResource Heading}" />
-                    <WrapPanel x:Name="RangeButtons" Margin="0,0,0,8" />
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Temperatures" Style="{StaticResource CardTitle}" />
@@ -235,6 +241,16 @@
                             <local:HistoryChart x:Name="RpmChart" Height="180" Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
+                    <!-- the user's own chart: any lines together, each unit with its own scale -->
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Compare" Style="{StaticResource CardTitle}" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,12"
+                                       Text="Your own chart: pick what you want to see together, for example the GPU memory and the GPU fans. Each unit has its own scale, the first on the left and the second on the right." />
+                            <WrapPanel x:Name="CompareChoices" />
+                            <local:HistoryChart x:Name="CompareChart" Height="260" Margin="0,8,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+                    </Border>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Values" Style="{StaticResource CardTitle}" />
@@ -252,7 +268,8 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
-            </ScrollViewer>
+                </ScrollViewer>
+            </Grid>
 
             <!-- reports: game sessions -->
             <ScrollViewer x:Name="ReportsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
@@ -504,7 +521,7 @@
                         <StackPanel>
                             <TextBlock Text="Your fans" Style="{StaticResource CardTitle}" />
                             <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,14"
-                                       Text="How many fans are on each output, and how loud. Quiet fans are sped up first." />
+                                       Text="How many fans are on each output, how loud they are and what they cool. Quiet fans are sped up first. A graphics card often has fewer outputs than fans (three fans on two outputs, two of them wired together): choose the number of fans you see on it. What a fan cools is measured by the calibration; if that came out wrong, choose it yourself." />
                             <StackPanel x:Name="LoudnessRows" />
                         </StackPanel>
                     </Border>
