@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.4] - 02.10.2026
+
+### New
+
+- **Your own data folder, also for two Windows accounts** (*Settings → Your data → Change the folder …*): every Windows account has its own data folder, so a second account on the same PC started with nothing: no fans, no calibration, no curves. Now you can choose the folder yourself. AuFantic copies everything it has there (fans, calibration, curves, history, settings), starts again and uses that folder from then on; the old folder stays as it is. Then choose the same folder in the other account: AuFantic sees that it already has a calibration and uses it, so both accounts have the same fans, curves, history and settings. The order doesn't matter: if the account without a calibration chose the folder first, the calibrated one copies its data there. A folder with other files in it can't be chosen: take an empty one (the dialog can make a new one). If the folder can't be reached at a start (a drive that isn't plugged in), AuFantic uses the account's own folder that time and says so in the *Log* and in *Settings*.
+
+### Changed
+
+- **One AuFantic per PC, not per account:** after *Switch user* the first account's AuFantic keeps running and keeps the fans. If you start AuFantic in a second account at the same time, it now says so and doesn't start, instead of two copies setting the same fans. Exit it in the first account, or sign that account out.
+
 ## [0.2.3] - 01.10.2026
 
 ### New

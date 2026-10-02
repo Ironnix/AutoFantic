@@ -113,5 +113,11 @@
   "{0}: every output has its own curve again.": "{0}: Jeder Anschluss hat wieder seine eigene Kurve.",
   "React early is on: the fans speed up as soon as the graphics card's power jumps, before it gets warm.": "Früh reagieren ist an: Die Lüfter werden schneller, sobald die Leistung der Grafikkarte springt, bevor sie warm wird.",
   "React early is off: the fans follow the temperature only.": "Früh reagieren ist aus: Die Lüfter folgen nur der Temperatur.",
-  "The curves couldn't be worked out again for these fans: calibrate again. Until then the fans keep the curves they had.": "Die Kurven konnten für diese Lüfter nicht neu berechnet werden: Kalibriere noch einmal. Bis dahin behalten die Lüfter ihre bisherigen Kurven."
+  "The curves couldn't be worked out again for these fans: calibrate again. Until then the fans keep the curves they had.": "Die Kurven konnten für diese Lüfter nicht neu berechnet werden: Kalibriere noch einmal. Bis dahin behalten die Lüfter ihre bisherigen Kurven.",
+  "AuFantic is already running in another Windows account on this PC and controls the fans from there.\n\nExit it there (right-click its icon next to the clock → Exit) or sign that account out, then start AuFantic here.": "AuFantic läuft bereits in einem anderen Windows-Konto auf diesem PC und steuert von dort die Lüfter.\n\nBeende es dort (Rechtsklick auf sein Symbol neben der Uhr → Exit) oder melde dieses Konto ab, dann starte AuFantic hier.",
+  "the folder isn't there": "der Ordner ist nicht da",
+  "The data folder is {0} from the next start on.":"Der Datenordner ist ab dem nächsten Start {0}.",
+  "The data was copied from {0} to {1}. AuFantic uses that folder from now on; the old one stays as it is.": "Die Daten wurden von {0} nach {1} kopiert. AuFantic nutzt ab jetzt diesen Ordner; der alte bleibt, wie er ist.",
+  "The data couldn't be copied to {0} ({1}). AuFantic keeps using {2}.": "Die Daten konnten nicht nach {0} kopiert werden ({1}). AuFantic nutzt weiter {2}.",
+  "The data folder {0} can't be used right now ({1}). This time AuFantic uses {2}; it tries the other one again at its next start.": "Der Datenordner {0} kann gerade nicht genutzt werden ({1}). Dieses Mal nutzt AuFantic {2}; beim nächsten Start versucht es den anderen wieder."
 }

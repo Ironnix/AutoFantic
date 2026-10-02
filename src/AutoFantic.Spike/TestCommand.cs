@@ -715,7 +715,7 @@ internal sealed class RunsFolder
     public string Path { get; }
 
     /// <summary>
-    /// The same data folder as the app (%LocalAppData%\AutoFantic). A simulated PC writes into its
+    /// The same data folder as the app (%LocalAppData%\AutoFantic, or the one chosen in its Settings). A simulated PC writes into its
     /// sim\ subfolder, so its made-up data never mixes with real results.
     /// </summary>
     public static string Default(FanSession session) => DataFolder.Default(session is Core.Simulation.SimulatedPc);

@@ -51,6 +51,8 @@ internal static class Watchdog
         if (ProcessId(args) is not { } pid)
             return 2;
         bool simulate = args.Contains("--simulate");
+        // now, not after the wait: the folder the main process uses (a folder chosen in Settings meanwhile counts for the next one)
+        string folder = DataFolder.Default(simulate);
 
         try
         {
@@ -66,7 +68,6 @@ internal static class Watchdog
             // already gone before it could be watched: still check below
         }
 
-        string folder = DataFolder.Default(simulate);
         if (!Handback.AnyIn(folder))
             return 0; // it handed its fans back itself: the normal case
         Program.UseLanguage(simulate); // for its lines in the log

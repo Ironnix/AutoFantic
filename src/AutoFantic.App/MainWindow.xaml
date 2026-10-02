@@ -665,11 +665,15 @@
                         <StackPanel>
                             <TextBlock Text="Your data" Style="{StaticResource CardTitle}" />
                             <TextBlock x:Name="CalibrationInfo" Style="{StaticResource Caption}" Margin="0,2,0,6" />
-                            <TextBlock x:Name="DataPath" Style="{StaticResource Caption}" Margin="0,0,0,12" />
-                            <StackPanel Orientation="Horizontal">
-                                <Button x:Name="OpenPage" Content="Open the calibration page" Padding="16,9" Margin="0,0,10,0" />
-                                <Button x:Name="OpenFolder" Content="Open the data folder" Padding="16,9" />
-                            </StackPanel>
+                            <TextBlock x:Name="DataPath" Style="{StaticResource Caption}" Margin="0,0,0,6" />
+                            <TextBlock Style="{StaticResource Caption}" Margin="0,0,0,12"
+                                       Text="Every Windows account has its own data folder. To have the same fans, calibration and curves in another account on this PC, choose the same folder in both." />
+                            <WrapPanel>
+                                <Button x:Name="OpenPage" Content="Open the calibration page" Padding="16,9" Margin="0,0,10,10" />
+                                <Button x:Name="OpenFolder" Content="Open the data folder" Padding="16,9" Margin="0,0,10,10" />
+                                <Button x:Name="ChangeFolderButton" Content="Change the folder …" Padding="16,9" Margin="0,0,10,10"
+                                        ToolTip="AuFantic copies its data to the folder you choose and uses it from then on. If the folder already has a calibration (from another account), that one is used." />
+                            </WrapPanel>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}">

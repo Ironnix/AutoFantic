@@ -200,10 +200,15 @@ public partial class MainWindow : Window
             if (_app.Log.FilePath is { } log && File.Exists(log))
                 OpenInExplorer(log);
         };
+        ChangeFolderButton.Click += (_, _) => ChangeFolder();
         VersionText.Text = T($"AuFantic {AppVersion.Text} · early development · MIT License");
-        DataPath.Text = _app.RunsPath + (File.Exists(Path.Combine(_app.RunsPath, DataFolder.MigratedNote))
-            ? T("  (copied from runs\\)")
-            : "");
+        var folder = _app.DataUse;
+        DataPath.Text = _app.RunsPath
+            + (folder.Chosen ? T("  (chosen by you)") : File.Exists(Path.Combine(_app.RunsPath, DataFolder.MigratedNote)) ? T("  (copied from runs\\)") : "")
+            + (folder.Unusable is not { } other ? ""
+                : "\n" + (folder.CopyFailed
+                    ? T($"⚠ The data couldn't be copied to {other} ({folder.Why}), so this folder stays in use.")
+                    : T($"⚠ {other} can't be used right now ({folder.Why ?? T("the folder isn't there")}). AuFantic tries it again at its next start.")));
         ThemeBox.SelectedIndex = (int)_app.Appearance.Theme; // the items are in the order of Theme
         ThemeBox.SelectionChanged += (_, _) =>
         {
@@ -1966,6 +1971,55 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, T($"{release.Name} is installed, but it didn't start ({ex.Message}). Start AuFantic again yourself."),"AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
         }
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// Another data folder: one that a second Windows account on this PC chooses too, so both
+    /// have the same fans, calibration and curves. AuFantic starts again for it, and the new
+    /// start copies the data (then no AuFantic has the files open).
+    /// </summary>
+    private void ChangeFolder()
+    {
+        if (_app.Calibrating)
+        {
+            MessageBox.Show(this, T("A calibration is running: finish or stop it first."), "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        string now = _app.DataUse.Root;
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = T("The folder for AuFantic's data"), InitialDirectory = now };
+        if (dialog.ShowDialog(this) != true)
+            return;
+        string folder = dialog.FolderName;
+
+        var change = DataFolder.Check(_app.DataUse, folder);
+        if (change == FolderChange.None)
+            return; // the folder in use
+        if (change is FolderChange.Nested or FolderChange.OtherFiles)
+        {
+            MessageBox.Show(this, change == FolderChange.Nested
+                    ? T("Choose a folder that isn't inside the data folder in use, and doesn't contain it.")
+                    : T("This folder has other files in it. Choose an empty folder (the dialog can make a new one), or one that AuFantic already uses in another Windows account."),
+                "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        string question = change == FolderChange.Copy
+            ? T($"AuFantic copies its data (fans, calibration, curves, history, settings) to\n{folder}\nand uses that folder from now on. The old folder stays as it is:\n{now}")
+            : T($"This folder already has AuFantic's data (last changed {DataFolder.LastChanged(folder) ?? DateTime.Now:dd.MM.yyyy HH:mm}):\n{folder}\n\nAuFantic uses what is there; nothing is copied. What this Windows account has now stays where it is and isn't used any more:\n{now}");
+        if (MessageBox.Show(this, question + "\n\n" + T("AuFantic starts again for this. The BIOS has the fans for those few seconds."),
+                T("Data folder"), MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
+            return;
+
+        try
+        {
+            _app.ChooseFolder(folder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, T($"AuFantic can't write to {folder}: {ex.Message}\n\nNothing changed."), "AuFantic", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        _app.StartAgain("--open", "settings");
         System.Windows.Application.Current.Shutdown();
     }
 

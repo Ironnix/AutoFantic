@@ -67,7 +67,6 @@ internal static class Program
         // started by an update: the old version hands the fans back and ends first
         if (int.TryParse(Option(args, AppController.WaitForArgument), out int previous))
             WaitForExit(previous);
-        UseLanguage(simulate);
 
         if (!simulate && !IsAdministrator())
         {
@@ -81,6 +80,8 @@ internal static class Program
             }
             return 0;
         }
+        // only now, with admin rights: this looks at the data folder, and one chosen in Settings may need them (also to copy the data there)
+        UseLanguage(simulate);
 
         // the version from before the rename controls the fans: two programs must never fight over them
         if (!simulate && DataFolder.LegacyBackgroundRunning())
@@ -101,6 +102,16 @@ internal static class Program
                 System.Windows.MessageBox.Show(!simulate && RunningCopy() is { } other
                     ? T($"Another copy of AuFantic is already running:\n{other}\n\nExit it first (right-click its icon next to the clock → Exit), then start this one again.")
                     : T("AuFantic is already running: look for its icon next to the clock."), "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
+            return 0;
+        }
+
+        // the fans belong to the PC, not to a Windows account: after "Switch user" another account's AuFantic still has them
+        using var perPc = simulate ? null : HoldForThisPc();
+        if (!simulate && perPc is null)
+        {
+            if (!quiet)
+                System.Windows.MessageBox.Show(T("AuFantic is already running in another Windows account on this PC and controls the fans from there.\n\nExit it there (right-click its icon next to the clock → Exit) or sign that account out, then start AuFantic here."),
+                    "AuFantic", MessageBoxButton.OK, MessageBoxImage.Information);
             return 0;
         }
 
@@ -209,7 +220,7 @@ internal static class Program
             else if (!app.IsSetUp)
                 wpf.Dispatcher.BeginInvoke(() => tray.OpenWindow("calibration")); // nothing to do in the background yet: show the set-up
             else if (args.Contains("--open"))
-                wpf.Dispatcher.BeginInvoke(() => tray.OpenWindow());
+                wpf.Dispatcher.BeginInvoke(() => tray.OpenWindow(Option(args, "--open") ?? "overview")); // "--open settings": on that page
 
             return wpf.Run();
         }
@@ -309,6 +320,23 @@ internal static class Program
                 // the Task Scheduler can't be asked: Settings still says which copy starts
             }
         });
+    }
+
+    /// <summary>The mutex every Windows account on this PC sees, held until AuFantic exits; null if another account's AuFantic holds it.</summary>
+    private static Mutex? HoldForThisPc()
+    {
+        try
+        {
+            var mutex = new Mutex(initiallyOwned: true, DataFolder.PcMutex, out bool first);
+            if (first)
+                return mutex;
+            mutex.Dispose();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // it exists, and belongs to the other account
+        }
+        return null;
     }
 
     /// <summary>The exe of the AuFantic that is already running, if it's another copy than this one; null if it's this one, or can't be told.</summary>

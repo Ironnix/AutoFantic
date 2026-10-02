@@ -296,5 +296,16 @@
   "off at idle": "im Leerlauf aus",
   "no longer off at idle": "im Leerlauf nicht mehr aus",
   "controlled by the BIOS": "vom BIOS gesteuert",
-  "your own curve stays in use": "deine eigene Kurve bleibt aktiv"
+  "your own curve stays in use": "deine eigene Kurve bleibt aktiv",
+  "  (chosen by you)": "  (von dir gewählt)",
+  "⚠ The data couldn't be copied to {0} ({1}), so this folder stays in use.": "⚠ Die Daten konnten nicht nach {0} kopiert werden ({1}), deshalb bleibt dieser Ordner in Gebrauch.",
+  "⚠ {0} can't be used right now ({1}). AuFantic tries it again at its next start.": "⚠ {0} kann gerade nicht genutzt werden ({1}). AuFantic versucht es beim nächsten Start wieder.",
+  "The folder for AuFantic's data": "Der Ordner für die Daten von AuFantic",
+  "Choose a folder that isn't inside the data folder in use, and doesn't contain it.": "Wähle einen Ordner, der nicht im genutzten Datenordner liegt und ihn auch nicht enthält.",
+  "This folder has other files in it. Choose an empty folder (the dialog can make a new one), or one that AuFantic already uses in another Windows account.": "In diesem Ordner liegen andere Dateien. Wähle einen leeren Ordner (im Dialog kannst du einen neuen anlegen) oder einen, den AuFantic schon in einem anderen Windows-Konto nutzt.",
+  "AuFantic copies its data (fans, calibration, curves, history, settings) to\n{0}\nand uses that folder from now on. The old folder stays as it is:\n{1}": "AuFantic kopiert seine Daten (Lüfter, Kalibrierung, Kurven, Verlauf, Einstellungen) nach\n{0}\nund nutzt ab jetzt diesen Ordner. Der alte Ordner bleibt, wie er ist:\n{1}",
+  "This folder already has AuFantic's data (last changed {0:dd.MM.yyyy HH:mm}):\n{1}\n\nAuFantic uses what is there; nothing is copied. What this Windows account has now stays where it is and isn't used any more:\n{2}": "In diesem Ordner liegen schon Daten von AuFantic (zuletzt geändert {0:dd.MM.yyyy HH:mm}):\n{1}\n\nAuFantic nutzt, was dort ist; es wird nichts kopiert. Was dieses Windows-Konto jetzt hat, bleibt, wo es ist, und wird nicht mehr genutzt:\n{2}",
+  "AuFantic starts again for this. The BIOS has the fans for those few seconds.": "AuFantic startet dafür neu. In diesen paar Sekunden steuert das BIOS die Lüfter.",
+  "Data folder": "Datenordner",
+  "AuFantic can't write to {0}: {1}\n\nNothing changed.": "AuFantic kann nicht in {0} schreiben: {1}\n\nEs wurde nichts geändert."
 }

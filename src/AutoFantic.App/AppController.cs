@@ -49,6 +49,23 @@ internal sealed class AppController : IDisposable
 
     public string RunsPath { get; }
 
+    /// <summary>Which data folder is in use: this Windows account's standard one, or one chosen in Settings.</summary>
+    public DataFolderUse DataUse => DataFolder.Use;
+
+    /// <summary>
+    /// Another data folder, from the next start on (<see cref="StartAgain"/>): the same one in two
+    /// Windows accounts gives both the same fans, calibration, curves and history. The data in use
+    /// is copied there, unless the folder has fans or a calibration already: then those are used.
+    /// Throws with the reason if the folder can't be written to.
+    /// </summary>
+    public FolderChange ChooseFolder(string folder)
+    {
+        var change = DataFolder.Choose(DataUse, folder);
+        if (change is FolderChange.Copy or FolderChange.UseAsIs)
+            Log.Add(LogKind.Info, T($"The data folder is {folder} from the next start on."));
+        return change;
+    }
+
     /// <summary>What AuFantic did: safety stops, sensor problems, fans off and on, calibrations …</summary>
     public ActivityLog Log { get; }
 
@@ -226,6 +243,12 @@ internal sealed class AppController : IDisposable
             + $"{(app.IsSetUp ? T($"{T(app.Preset.Name)}, {app.Effective!.Groups.Count} fan groups.") : T("not set up yet, the BIOS controls the fans."))}"));
         foreach (var check in app.Checks.Where(c => c.Result >= CheckResult.Warning))
             log.Add(LogKind.Warning, $"{check.Title}: {check.Detail}");
+        if (app.DataUse.CopiedFrom is { } old)
+            log.Add(LogKind.Info, T($"The data was copied from {old} to {app.DataUse.Root}. AuFantic uses that folder from now on; the old one stays as it is."));
+        if (app.DataUse.Unusable is { } other)
+            log.Add(LogKind.Warning, app.DataUse.CopyFailed
+                ? T($"The data couldn't be copied to {other} ({app.DataUse.Why}). AuFantic keeps using {app.DataUse.Root}.")
+                : T($"The data folder {other} can't be used right now ({app.DataUse.Why ?? T("the folder isn't there")}). This time AuFantic uses {app.DataUse.Root}; it tries the other one again at its next start."));
         app.UpgradeIfOld();
         app.Monitor.Warning += message =>
         {
@@ -434,8 +457,14 @@ internal sealed class AppController : IDisposable
     public const string WaitForArgument = "--wait-for";
     public const string UpdatedFromArgument = "--updated-from";
 
-    /// <summary>Where a download is unpacked; removed at the next start.</summary>
-    private string UpdateWork => Path.Combine(RunsPath, "update");
+    /// <summary>
+    /// Where a download is unpacked; removed at the next start. In this Windows account's own
+    /// folder also when the data is in a folder the user chose: what AuFantic runs with admin
+    /// rights must not lie where other accounts can change it.
+    /// </summary>
+    private string UpdateWork => Path.Combine(WorkPath, "update");
+
+    private string WorkPath => DataFolder.Own(Session is SimulatedPc);
 
     // ── cooling health ─────────────────────────────────────────────────────────────────
 
@@ -676,7 +705,7 @@ internal sealed class AppController : IDisposable
     /// </summary>
     public async Task<bool> InstallPawnIoAsync()
     {
-        string work = Path.Combine(RunsPath, "pawnio");
+        string work = Path.Combine(WorkPath, "pawnio");
         Log.Add(LogKind.Info, T($"Installing the PawnIO driver {PawnIoSetup.Version}: downloading it from GitHub …"));
         try
         {
