@@ -113,6 +113,8 @@
   "{0}: every output has its own curve again.": "{0}: Jeder Anschluss hat wieder seine eigene Kurve.",
   "React early is on: the fans speed up as soon as the graphics card's power jumps, before it gets warm.": "Früh reagieren ist an: Die Lüfter werden schneller, sobald die Leistung der Grafikkarte springt, bevor sie warm wird.",
   "React early is off: the fans follow the temperature only.": "Früh reagieren ist aus: Die Lüfter folgen nur der Temperatur.",
+  "The graphics card draws about {0:0} W while the PC is idle (20 to 40 W is normal). The Overview says what helps.": "Die Grafikkarte zieht im Leerlauf etwa {0:0} W (normal sind 20 bis 40 W). Die Übersicht sagt, was hilft.",
+  "Idle power: {0}": "Leistung im Leerlauf: {0}",
   "The curves couldn't be worked out again for these fans: calibrate again. Until then the fans keep the curves they had.": "Die Kurven konnten für diese Lüfter nicht neu berechnet werden: Kalibriere noch einmal. Bis dahin behalten die Lüfter ihre bisherigen Kurven.",
   "AuFantic is already running in another Windows account on this PC and controls the fans from there.\n\nExit it there (right-click its icon next to the clock → Exit) or sign that account out, then start AuFantic here.": "AuFantic läuft bereits in einem anderen Windows-Konto auf diesem PC und steuert von dort die Lüfter.\n\nBeende es dort (Rechtsklick auf sein Symbol neben der Uhr → Exit) oder melde dieses Konto ab, dann starte AuFantic hier.",
   "the folder isn't there": "der Ordner ist nicht da",

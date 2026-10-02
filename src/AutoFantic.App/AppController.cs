@@ -262,6 +262,7 @@ internal sealed class AppController : IDisposable
         app.Updates = UpdateSettings.Load(Path.Combine(runs, UpdateSettings.FileName));
         app.Appearance = AppearanceSettings.Load(Path.Combine(runs, AppearanceSettings.FileName));
         app.Compare = CompareSettings.Load(Path.Combine(runs, CompareSettings.FileName));
+        app.Hints = HintSettings.Load(Path.Combine(runs, HintSettings.FileName));
         UpdateInstaller.CleanUp(AppContext.BaseDirectory, app.UpdateWork); // what an update left behind
         app.Monitor.SessionEnded += ended => app.Log.Add(LogKind.Info, Describe(ended));
         loop.Sampled += (snapshot, status) =>
@@ -270,12 +271,13 @@ internal sealed class AppController : IDisposable
             app.Monitor.Record(snapshot, status, session.Foreground());
             app.UpdateQuiet();
         };
-        // the days since the calibration: now (in the background) and every hour after
+        // the days since the calibration and the idle power: now (in the background) and every hour after
         app.FanWearSettings = FanWearSettings.Load(Path.Combine(runs, FanWearSettings.FileName));
         app._healthTimer = new System.Threading.Timer(_ =>
         {
             app.UpdateHealth();
             app.UpdateFanWear();
+            app.UpdateIdlePower();
         }, null, TimeSpan.FromSeconds(20), TimeSpan.FromHours(1));
         return app;
     }
@@ -329,6 +331,45 @@ internal sealed class AppController : IDisposable
             Log.Add(LogKind.Fans, control.ReactEarly
                 ? T("React early is on: the fans speed up as soon as the graphics card's power jumps, before it gets warm.")
                 : T("React early is off: the fans follow the temperature only."));
+    }
+
+    // ── the graphics card's idle power ─────────────────────────────────────────────────
+
+    /// <summary>What the graphics card draws while the PC is idle, from the history; null while there are too few idle minutes.</summary>
+    public IdlePowerFinding? IdlePower { get; private set; }
+
+    /// <summary>The hints the user still wants to see.</summary>
+    public HintSettings Hints { get; private set; } = new();
+
+    /// <summary>The idle power was worked out again, or its hint was switched off. Raised on any thread.</summary>
+    public event Action? IdlePowerChanged;
+
+    private bool _idlePowerLogged;
+
+    /// <summary>Reads the idle power from the history again (a week of minutes: call it off the window's thread).</summary>
+    public void UpdateIdlePower()
+    {
+        try
+        {
+            IdlePower = Core.Monitoring.IdlePower.Gpu(Monitor.Store, Loop.Last?.Time ?? DateTimeOffset.Now);
+            if (IdlePower is { High: true } found && Hints.IdlePower && !_idlePowerLogged)
+            {
+                _idlePowerLogged = true; // once per start
+                Log.Add(LogKind.Info, T($"The graphics card draws about {found.Watts:0} W while the PC is idle (20 to 40 W is normal). The Overview says what helps."));
+            }
+            IdlePowerChanged?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Log.Add(LogKind.Warning, T($"Idle power: {ex.Message}"));
+        }
+    }
+
+    public void SaveHints(HintSettings hints)
+    {
+        Hints = hints;
+        hints.Save(Path.Combine(RunsPath, HintSettings.FileName));
+        IdlePowerChanged?.Invoke();
     }
 
     // ── appearance ─────────────────────────────────────────────────────────────────────
@@ -889,9 +930,6 @@ internal sealed class AppController : IDisposable
             Loop.UseCalibration(effective, FanControlLoop.MinSpinning(effective, Inventory), FanControlLoop.CanStop(effective, Inventory));
         CurvesChanged?.Invoke();
     }
-
-    public IReadOnlyList<LevelInsight> Levels() =>
-        Recommended is { } r && Inventory is not null ? CalibrationInsights.Levels(r, Inventory, Preset.Profile) : [];
 
     public IReadOnlyList<RunInsight> Runs() =>
         Inventory is not null ? CalibrationInsights.Runs(Store, Inventory.Groups(), Preset.Profile) : [];

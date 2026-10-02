@@ -32,7 +32,7 @@ namespace AutoFantic.App;
 /// <summary>
 /// The AuFantic window: what the fans do right now (Overview), the history of temperatures,
 /// power and fans with the user's warnings (Monitor), their curves to look at and to set (Fan curves),
-/// the game sessions (Reports), whether the cooling got worse (Cooling health), calibrating and why the settings are what they are (Calibration), what
+/// the game sessions (Reports), whether the cooling got worse (Cooling health), calibrating and what it measured (Calibration), what
 /// AuFantic did (Log), and the few settings plus developer tools. Before the first
 /// calibration the Calibration page is the set-up (checks, find my fans, calibrate) and there are
 /// no curves yet. Everything it changes goes through <see cref="AppController"/>.
@@ -176,7 +176,15 @@ public partial class MainWindow : Window
         FanStoppedBox.Click += (_, _) => SaveWarnings();
         QuietAway.Click += (_, _) => SaveQuiet();
         QuietNight.Click += (_, _) => SaveQuiet();
-        ReactEarlyBox.Click += (_, _) => _app.SaveControl(_app.Control with { ReactEarly = ReactEarlyBox.IsChecked == true });
+        ReactEarlyButton.Click += (_, _) =>
+        {
+            _app.SaveControl(_app.Control with { ReactEarly = ReactEarlyButton.IsChecked == true });
+            ShowReactEarly();
+        };
+        IdlePowerDisplays.Click += (_, _) => OpenInExplorer("ms-settings:display-advanced");
+        IdlePowerHide.Click += (_, _) => _app.SaveHints(_app.Hints with { IdlePower = false });
+        RunsExpander.Expanded += (_, _) => BuildRuns();
+        RunsExpander.Collapsed += (_, _) => BuildRuns();
         foreach (var box in new[] { QuietAwayMinutes, QuietFrom, QuietTo })
             box.LostFocus += (_, _) => SaveQuiet();
         AddWarning.Click += (_, _) =>
@@ -255,8 +263,10 @@ public partial class MainWindow : Window
         _app.Log.Added += OnLogAdded;
         _app.HealthUpdated += OnHealthUpdated;
         _app.UpdateStateChanged += OnUpdateStateChanged;
+        _app.IdlePowerChanged += OnIdlePowerChanged;
         Closed += (_, _) =>
         {
+            _app.IdlePowerChanged -= OnIdlePowerChanged;
             _app.HealthUpdated -= OnHealthUpdated;
             _app.UpdateStateChanged -= OnUpdateStateChanged;
             _timer.Stop();
@@ -277,8 +287,11 @@ public partial class MainWindow : Window
         BuildRanges();
         BuildWarnings();
         BuildQuiet();
+        ShowReactEarly();
         UpdateCalibrationState();
         ShowUpdates();
+        ShowIdlePower();
+        _ = Task.Run(_app.UpdateIdlePower); // as it is now, not as of the last full hour
 
         _timer.Tick += (_, _) =>
         {
@@ -334,7 +347,6 @@ public partial class MainWindow : Window
         NavCurves.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         NavHealth.Visibility = setUp ? Visibility.Visible : Visibility.Collapsed;
         QuietPanel.IsEnabled = setUp;
-        EarlyPanel.IsEnabled = setUp;
         NavCalibration.Content = setUp ? T("Calibration") : T("Set up");
         CalibrationHeading.Text = setUp ? T("Calibration") : T("Set up AuFantic");
         SetupCards.Visibility = setUp ? Visibility.Collapsed : Visibility.Visible;
@@ -499,6 +511,32 @@ public partial class MainWindow : Window
             : $"CPU ≤ {profile.Cpu:0} °C · GPU ≤ {profile.GpuCore:0} °C";
     }
 
+    private void OnIdlePowerChanged() => Dispatcher.BeginInvoke(ShowIdlePower);
+
+    /// <summary>
+    /// The hint under the temperatures while the graphics card draws far too much at idle: how
+    /// much, the likely cause (the monitors' refresh rates, as Windows runs them now) and what to try.
+    /// </summary>
+    private void ShowIdlePower()
+    {
+        bool show = _app.Hints.IdlePower && _app.IdlePower is { High: true };
+        IdlePowerCard.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show)
+            return;
+
+        var rates = Displays.RefreshRates();
+        string listed = string.Join(", ", rates.Select(hz => $"{hz} Hz"));
+        const string watch = "The card's power above drops within seconds if it helped; then the card stays cooler and its fans can stand still.";
+        IdlePowerTitle.Text = T($"The graphics card draws about {_app.IdlePower!.Watts:0} W while the PC is idle");
+        IdlePowerDetail.Text = T("20 to 40 W is normal.") + " " + (IdlePower.Cause(rates) switch
+        {
+            IdleCause.DifferentRates => T($"The usual cause: monitors running at different refresh rates (yours: {listed}). Set them all to the same rate; a multiple often works too (120 Hz next to 60 Hz)."),
+            IdleCause.HighRate => T($"The usual cause is the monitors' refresh rate, and a very high one (yours: {listed}) keeps the card busy. Try a lower one (120 Hz)."),
+            _ when rates.Count > 0 => T($"Often it's the monitors' refresh rate, but yours look fine ({listed}). Then a program keeps the card busy: a browser with a video, a moving wallpaper, a recording tool. Close them one by one."),
+            _ => T("The usual cause: monitors running at different refresh rates. Set them all to the same rate; a multiple often works too (120 Hz next to 60 Hz)."),
+        }) + " " + T(watch);
+    }
+
     private void SwitchPreset(Preset preset)
     {
         Cursor = System.Windows.Input.Cursors.Wait;
@@ -583,6 +621,13 @@ public partial class MainWindow : Window
         FallbackText.ToolTip = gpu
             ? T("Without AuFantic: MSI Afterburner's custom fan curve for the graphics card (a BIOS can't control it).")
             : T("Without AuFantic: the mainboard's own fan curve (e.g. MSI Smart Fan). A BIOS can only follow the CPU temperature.");
+    }
+
+    /// <summary>The button above the curves: one switch for all fans, on or off.</summary>
+    private void ShowReactEarly()
+    {
+        ReactEarlyButton.IsChecked = _app.Control.ReactEarly;
+        ReactEarlyText.Text = _app.Control.ReactEarly ? T("React early: on") : T("React early: off");
     }
 
     private void OnCurvesChanged() => Dispatcher.BeginInvoke(() =>
@@ -940,14 +985,13 @@ public partial class MainWindow : Window
         return panel;
     }
 
-    /// <summary>"Improve from everyday use", "Why these settings", "Your fans", "What each fan cools" and "Runs".</summary>
+    /// <summary>"Improve from everyday use", "Your fans", "What each fan cools" and "Runs".</summary>
     private void BuildInsights()
     {
         _building = true;
         try
         {
             BuildUse();
-            BuildWhy();
             BuildLoudness();
             BuildEffects();
             BuildRuns();
@@ -956,30 +1000,6 @@ public partial class MainWindow : Window
         {
             _building = false;
         }
-    }
-
-    private void BuildWhy()
-    {
-        WhyRows.Children.Clear();
-        var preset = _app.Preset;
-        WhyIntro.Text = T($"{T(preset.Name)}: what limits the cooling at each load, and why the fans run as they do.");
-        foreach (var level in _app.Levels())
-        {
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 14) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            var head = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
-            head.Children.Add(new TextBlock { Text = Capitalize(T(level.Label)),FontSize = 14, FontWeight = FontWeights.SemiBold });
-            head.Children.Add(new TextBlock { Text = $"CPU {level.CpuPower:0} W · GPU {level.GpuPower:0} W", Style = (Style)FindResource("Caption") });
-            head.Children.Add(Badge($"{CalibrationInsights.Name(level.Bottleneck)} {level.Temperature:0} / {level.Allowed:0} °C", level.Temperature > level.Allowed));
-
-            row.Children.Add(head);
-            Place(row, new TextBlock { Text = level.Why, TextWrapping = TextWrapping.Wrap, FontSize = 13.5 }, 1);
-            WhyRows.Children.Add(row);
-        }
-        if (WhyRows.Children.Count == 0)
-            WhyRows.Children.Add(new TextBlock { Text = T("Calibrate once with this version to see this."),Style = (Style)FindResource("Caption") });
     }
 
     private void BuildLoudness()
@@ -997,18 +1017,18 @@ public partial class MainWindow : Window
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var count = new ComboBox { Width = 110, Margin = new Thickness(0, 0, 10, 0) };
+            var count = new ComboBox { Width = 110, Margin = new Thickness(0, 0, 10, 0), ToolTip = T("How many fans are on this output. A graphics card often has fewer outputs than fans (three fans on two outputs): choose the number of fans you see on it.") };
             for (int n = 1; n <= 6; n++)
                 count.Items.Add(n == 1 ? T("1 fan") : T($"{n} fans"));
             count.SelectedIndex = Math.Clamp(group.Headers.Sum(h => h.FanCount), 1, 6) - 1;
 
-            var loudness = new ComboBox { Width = 110 };
+            var loudness = new ComboBox { Width = 110, ToolTip = T("How loud these fans are. Quiet fans are sped up first.") };
             foreach (var (label, _) in LoudnessChoices)
                 loudness.Items.Add(T(label));
             double db = group.Headers[0].LoudnessDb;
             loudness.SelectedIndex = Array.FindIndex(LoudnessChoices, c => Math.Abs(c.Db - db) < 0.1) is >= 0 and var i ? i : 1;
 
-            var cools = new ComboBox { Width = 150, Margin = new Thickness(10, 0, 0, 0), ToolTip = T("What these fans cool. Their curve follows that temperature.") };
+            var cools = new ComboBox { Width = 150, Margin = new Thickness(10, 0, 0, 0), ToolTip = T("What these fans cool: their curve follows that temperature. The calibration measures it; if that came out wrong, choose it yourself.") };
             foreach (var (label, _) in CoolsChoices)
                 cools.Items.Add(T(label));
             cools.SelectedIndex = Math.Max(0, Array.FindIndex(CoolsChoices, c => c.Cools == group.Cools));
@@ -1057,7 +1077,7 @@ public partial class MainWindow : Window
 
         TogetherRows.Children.Add(new TextBlock
         {
-            Text = T("Fans on two outputs that belong together, like the two fans of one CPU cooler? Let them run together: one speed and one curve, like the fans of a graphics card."),
+            Text = T("Two outputs for one cooler? Let them run together, with one curve."),
             Style = (Style)FindResource("Caption"),
             Margin = new Thickness(0, 8, 0, 10),
         });
@@ -1155,10 +1175,14 @@ public partial class MainWindow : Window
         return line;
     }
 
+    /// <summary>Every measurement, under a heading that says how many there are. The rows are only built while it's open: the list gets long.</summary>
     private void BuildRuns()
     {
         RunRows.Children.Clear();
         var runs = _app.Runs();
+        RunsExpander.Header = new TextBlock { Text = T($"Runs ({runs.Count})"), Style = (Style)FindResource("CardTitle") };
+        if (!RunsExpander.IsExpanded)
+            return;
         if (runs.Count == 0)
         {
             RunRows.Children.Add(new TextBlock { Text = T("No runs stored yet."),Style = (Style)FindResource("Caption") });
@@ -1477,7 +1501,6 @@ public partial class MainWindow : Window
         QuietNight.IsChecked = quiet.AtNight;
         QuietFrom.Text = quiet.NightFrom;
         QuietTo.Text = quiet.NightTo;
-        ReactEarlyBox.IsChecked = _app.Control.ReactEarly;
     }
 
     private void SaveQuiet()
@@ -2082,23 +2105,6 @@ public partial class MainWindow : Window
         Margin = new Thickness(0, 0, 8, 0),
         VerticalAlignment = VerticalAlignment.Center,
     };
-
-    private static Border Badge(string text, bool over)
-    {
-        var badge = new Border
-        {
-            Margin = new Thickness(0, 6, 0, 0),
-            Padding = new Thickness(8, 2, 8, 3),
-            CornerRadius = new CornerRadius(10),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Child = new TextBlock { Text = (over ? "⚠ " : "") + text, FontSize = 12 },
-        };
-        if (over)
-            badge.Background = new SolidColorBrush(Color.FromArgb(0x30, 0xe3, 0x49, 0x48));
-        else
-            badge.SetResourceReference(Border.BackgroundProperty, "SubtleFillColorSecondaryBrush"); // follows a switch to dark
-        return badge;
-    }
 
     private static void Place(Grid grid, UIElement element, int column)
     {
